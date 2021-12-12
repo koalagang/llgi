@@ -1,0 +1,389 @@
+#!/usr/bin/env bash
+
+printf "WARNING: just as you would with running any other script, you are hereby granting llgi permission to modify your system.\nBy continuing you accept that if your system breaks as a result of this, it is YOUR OWN RESPONSIBILITY.\n\n"
+while true; do
+    read -p 'Do you wish to continue? [y/N] ' yn
+    case "$yn" in
+        [Yy]* ) printf '\nllgi: option entered: yes\nContinuing script.\n\n' && break ;;
+        [Nn]* ) printf '\nllgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
+        '') printf '\nllgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
+        * ) echo 'Please answer "yes" or "no".'
+    esac
+done
+
+# This directory is temporary. It will be moved to a more permanent spot in the future.
+pack_mgr_dir="./data/packaging-methods"
+
+# Check if the respective package managers are installed
+is_pkgmgr_installed (){
+    if [ -n "$(command -v $1)" ]; then
+        pkg_prefs="$pkg_prefs $1"
+    else
+        echo "llgi: error: $1 not installed" && exit 0
+    fi
+}
+
+# Check distribution
+# TODO: move from lsb_release to /etc/os-release
+distro="$(lsb_release -is)"
+supported_distros="Arch Linux,Artix,ArcoLinux,EndeavourOS,Fedora,Ubuntu,Elementary OS,Pop!_OS,Linux Mint,Manjaro"
+echo "Distributon detected as $distro."
+[[ "$supported_distros" =~ "$distro" ]] && printf 'Your distribution is officially supported by llgi.\n\n'
+[[ "$supported_distros" =~ "$distro" ]] || printf "llgi: error: $distro is not officially supported by llgi\nPlease specify your parent distribution with the '-p' flag"
+case "$distro" in
+    'Arch Linux') parent_distro='arch' ;;
+    'ArcoLinux') parent_distro='arch' ;;
+    'EndeavourOS') parent_distro='arch' ;;
+    'Manjaro') parent_distro='arch' ;;
+    'Artix') parent_distro='arch' ;;
+    'Ubuntu') parent_distro='ubuntu' ;;
+    'Elementary OS') parent_distro='ubuntu' ;;
+    'Pop!_OS') parent_distro='ubuntu' ;;
+    'Linux Mint') parent_distro='ubuntu' ;;
+    'Fedora') parent_distro='fedora' ;;
+esac
+
+
+# All the flags
+while getopts 'vFASNa:dp:C:c:' OPT; do
+    case "$OPT" in
+        v) echo "version: ALPHA" && exit 0 ;;
+        F) is_pkgmgr_installed 'flatpak' ;;
+        A) is_pkgmgr_installed 'zap' ;;
+        S) is_pkgmgr_installed 'snap' ;;
+        N) pkg_prefs="$pkg_prefs native-$parent_distro" ;;
+        a)
+            if [ -n "$(command -v $OPTARG)" ]; then
+                echo "Preferred AUR helper set to: $OPTARG" && aur_helper="$OPTARG"
+            else
+                echo "llgi: error: $OPTARG not installed" && exit 0
+            fi ;;
+        d) # Set preferred tool for root access as doas instead of using sudo
+            if [ -n "$(command -v 'doas')" ]; then
+                echo 'Preferred root access command set to: doas' && export root_cmd='doas'
+            else
+                echo 'llgi: error: doas not installed' && exit 0
+            fi ;;
+        p) # Specify the parent distribution if yours isn't officially supported
+            case "$OPTARG" in
+              'ubuntu') parent_distro='ubuntu' ;;
+              'ubuntu') parent_distro='ubuntu' ;;
+              'Arch Linux') parent_distro='arch' ;;
+              'arch linux') parent_distro='arch' ;;
+              'arch') parent_distro='arch' ;;
+              'arch') parent_distro='arch' ;;
+              'fedora') parent_distro='fedora' ;;
+              'fedora') parent_distro='fedora' ;;
+              *) printf "\nerror: $OPTARG is not a supported parent distribution\nSupported parent distributions: Ubuntu, Arch Linux, Fedora\n" && exit 0
+            esac ;;
+        C)
+            if [ -n "$(test -r $OPTARG)" ]; then
+                config="$OPTARG"
+            else
+                printf 'llgi: error: specified config file does not exist\nReverting to default.\n'
+            fi ;;
+        c)
+            if [ -n "$(test -r $OPTARG)" ]; then
+                cache="$OPTARG"
+            else
+                printf 'llgi: error: specified config file does not exist\nReverting to default.\n'
+            fi ;;
+  esac
+done
+
+# Set root access tool to sudo if '-d' flag has not been parsed
+[ -z "$root_cmd" ] && export root_cmd='sudo'
+[ -z "$config" ] && export config="$XDG_CONFIG_HOME/llgi" && mkdir -p "$config"
+[ -z "$cache" ] && export cache="$XDG_CACHE_HOME/llgi" && mkdir -p "$cache"
+
+[ -z "$pkg_prefs" ] && echo 'llgi: error: packaging preference not set' && exit 0
+export pkg_prefs=($pkg_prefs)
+
+# If using an Arch-based distribution and an AUR helper has not been specified, stop
+[ "$parent_distro" = 'arch' ] && [ -z "$aur_helper" ] && echo 'llgi: error: no AUR helper specified' && exit 0
+
+bak (){
+    echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak
+}
+
+load (){
+    printf 'Starting installation'
+    sleep 1
+    printf '.'
+    sleep 1
+    printf '.'
+    sleep 1
+    printf '.\n'
+    sleep 2
+}
+
+# software which requires special treatment
+# (can't simply be installed as a single package from the repos)
+# these are not included in the package lists
+source "$config/llgi.conf"
+[ -n "$wine" ] && export wine
+[ -n "$proton_ge" ] && export proton_ge
+[ -n "$boxtron" ] && export boxtron
+[ -n "$heroic" ] && export heroic
+[ -n "$veloren" ] && export veloren
+[ -n "$overwatch" ] && export overwatch
+[ -n "$hearthstone" ] && export hearthstone
+[ -n "$heroes_of_the_storm" ] && export heroes_of_the_storm
+[ -n "$magic_the_gathering_arena" ] && export magic_the_gathering_arena
+[ -n "$gwent" ] && export gwent
+[ -n "$osu" ] && export osu
+
+wine_install (){
+    printf '\nInstalling wine...\n'
+    case "$parent_distro" in
+        'arch') # note that multilib must be enabled for this but it is already enabled before running the wine_install function
+            $root_cmd pacman -S wine-staging giflib lib32-giflib libpng lib32-libpng libldap lib32-libldap gnutls lib32-gnutls \
+                mpg123 lib32-mpg123 openal lib32-openal v4l-utils lib32-v4l-utils libpulse lib32-libpulse libgpg-error \
+                lib32-libgpg-error alsa-plugins lib32-alsa-plugins alsa-lib lib32-alsa-lib libjpeg-turbo lib32-libjpeg-turbo \
+                sqlite lib32-sqlite libxcomposite lib32-libxcomposite libxinerama lib32-libgcrypt libgcrypt lib32-libxinerama \
+                ncurses lib32-ncurses opencl-icd-loader lib32-opencl-icd-loader libxslt lib32-libxslt libva lib32-libva gtk3 \
+                lib32-gtk3 gst-plugins-base-libs lib32-gst-plugins-base-libs vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm ;;
+        'ubuntu') $root_cmd dpkg --add-architecture i386 && wget -nc https://dl.winehq.org/wine-builds/winehq.key -O "$cache/winehq.key" && $root_cmd apt-key add "$cache/winehq.key"
+            case "$(lsb_release -rs)" in
+                '21.04') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ hirsute main' ;;
+                '20.10') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ groovy main' ;;
+                '20.04') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ focal main' ;;
+                '19.10') [ "$(lsb_release -is)" = 'Linux Mint' ] && $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ bionic main' ||
+                    $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ eoan main' ;;
+                '19.04') [ "$(lsb_release -is)" = 'Linux Mint' ] && $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ bionic main' ||
+                    $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ disco main' ;;
+                '18.10') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ cosmic main' ;;
+                '18.04') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ bionic main' &&
+                    [ "$(lsb_release -is)" = 'ubuntu' ] && $root_cmd add-apt-repository ppa:cybermax-dexter/sdl2-backport
+            esac
+            $root_cmd apt install --install-recommends winehq-staging wine-staging wine-staging-i386 wine-staging-amd64 libgnutls30:i386 libldap-2.4-2:i386 \
+            libgpg-error0:i386 libxml2:i386 libasound2-plugins:i386 libsdl2-2.0-0:i386 libfreetype6:i386 libdbus-1-3:i386 libsqlite3-0:i386 -y
+            rm "$cache/winehq.key" ;;
+        'fedora') $root_cmd dnf install wine -y
+        esac
+}
+
+# drivers and vulkan
+drivers (){
+    case "$parent_distro" in
+        'arch') # note that multilib must be enabled for this but it is already enabled before running the drivers function
+            if [ "$driver_vendor" = 'nvidia' ]; then
+                [ "$(uname -r)" =~ 'lts' ] || $root_cmd nvidia nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime \
+                vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
+                [ "$(uname -r)" =~ 'lts' ] && $root_cmd nvidia-lts nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime \
+                vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
+            elif [ "$driver_vendor" = 'amd' ]; then
+                $root_cmd pacman -S lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
+            elif [ "$driver_vendor" = 'intel' ]; then
+                $root_cmd pacman -S lib32-mesa vulkan-intel lib32-vulkan-intel vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
+            fi ;;
+        'ubuntu')
+            if [ "$driver_vendor" = 'nvidia' ]; then
+                $root_cmd add-apt-repository ppa:graphics-drivers/ppa && $root_cmd dpkg --add-architecture i386 && $root_cmd apt update && $root_cmd upgrade \
+                && $root_cmd apt install nvidia-driver-495 libvulkan1 libvulkan1:i386 -y
+            else
+                $root_cmd add-apt-repository ppa:kisak/kisak-mesa && $root_cmd dpkg --add-architecture i386 && $root_cmd apt update && $root_cmd apt upgrade \
+                && $root_cmd apt install libgl1-mesa-dri:i386 mesa-vulkan-drivers mesa-vulkan-drivers:i386 -y
+            fi ;;
+        'fedora')
+            # note that RPM Fusion must be enabled for this but it is already enabled before running the drivers function
+            if [ "$driver_vendor" = 'nvidia' ]; then
+                $root_cmd install akmod-nvidia vulkan-loader vulkan-loader.i686 -y
+            else
+                $root_cmd dnf install vulkan-loader vulkan-loader.i686 -y
+            fi
+    esac
+}
+
+game_scripts (){
+    [ -z "$(command -v wine)" ] && wine_install
+    if [ -z "$(command -v lutris)" ]; then
+        case "$parent_distro" in
+            'arch') $root_cmd pacman -S lutris --needed --noconfirm ;;
+            'ubuntu') $root_cmd add-apt-repository ppa:lutris-team/lutris && $root_cmd apt update && $root_cmd apt install lutris -y ;;
+            'fedora') $root_cmd dnf install lutris -y ;;
+        esac
+    fi
+    [[ "$1" -eq 1 ]] \
+        && printf '\nllgi: please manually click through the graphical prompts which pop up.\nWhen the installation is complete, close all windows which were opened.\n' \
+        && notify-send 'llgi' 'Please manually click through the graphical prompts which pop up.' -t 10000 \
+        && notify-send 'llgi' 'When the installation is complete, close all windows which were opened.' -t 10000 \
+        && printf '\nllgi: Now installing %s\n' "$2" && notify-send 'llgi' "Now installing $2." -t 10000 && load \
+        && lutris lutris:"$1"
+}
+
+check_installable (){
+    sed 's/#.*$//g' "$config/llgi.conf" | grep '=1' | cut -d'=' -f1 > "$cache/to-install"
+
+    for pref in "${pkg_prefs[@]}"; do
+        cut -d',' -f2 "$pack_mgr_dir/$pref" > "$cache/to-install-$pref-temp"
+        cat "$cache/to-install" >> "$cache/to-install-$pref-temp"
+        sort "$cache/to-install-$pref-temp" | uniq -d > "$cache/to-install-$pref"
+    done
+
+    # remove packages in common which have a lower priority
+    # e.g. if the order of priority (descending) is snap, flatpak, zap:
+    # if flatpak contains anything which is also in snap, remove it from flatpak
+    # if zap contains anything which is in either snap or flatpak, remove it from zap
+    # this leaves snap with all the packages which it supports and zap only with the packages which
+    # are not supported by snap or flatpak
+
+    cat "$cache/to-install-${pkg_prefs[0]}" > "$cache/installable-temp"
+
+    [ -n "${pkg_prefs[1]}" ] &&
+        cp "$cache/to-install-${pkg_prefs[1]}" "$cache/to-install-${pkg_prefs[1]}-temp" &&
+        grep -vxf "$cache/to-install-${pkg_prefs[0]}" "$cache/to-install-${pkg_prefs[1]}-temp" > "$cache/to-install-${pkg_prefs[1]}" &&
+        cat "$cache/to-install-${pkg_prefs[1]}" >> "$cache/installable-temp"
+
+    [ -n "${pkg_prefs[2]}" ] &&
+        cp "$cache/to-install-${pkg_prefs[2]}" "$cache/to-install-${pkg_prefs[2]}-temp" &&
+        grep -vxf "$cache/to-install-${pkg_prefs[0]}" "$cache/to-install-${pkg_prefs[2]}-temp" > "$cache/to-install-${pkg_prefs[2]}" &&
+        cp "$cache/to-install-${pkg_prefs[2]}" "$cache/to-install-${pkg_prefs[2]}-temp" &&
+        grep -vxf "$cache/to-install-${pkg_prefs[1]}" "$cache/to-install-${pkg_prefs[2]}-temp" > "$cache/to-install-${pkg_prefs[2]}" &&
+        cat "$cache/to-install-${pkg_prefs[2]}" >> "$cache/installable-temp"
+
+    [ -n "${pkg_prefs[3]}" ] &&
+        cp "$cache/to-install-${pkg_prefs[3]}" "$cache/to-install-${pkg_prefs[3]}-temp" &&
+        grep -vxf "$cache/to-install-${pkg_prefs[0]}" "$cache/to-install-${pkg_prefs[3]}-temp" > "$cache/to-install-${pkg_prefs[3]}" &&
+        cp "$cache/to-install-${pkg_prefs[3]}" "$cache/to-install-${pkg_prefs[3]}-temp" &&
+        grep -vxf "$cache/to-install-${pkg_prefs[1]}" "$cache/to-install-${pkg_prefs[3]}-temp" > "$cache/to-install-${pkg_prefs[3]}" &&
+        cp "$cache/to-install-${pkg_prefs[3]}" "$cache/to-install-${pkg_prefs[3]}-temp" &&
+        grep -vxf "$cache/to-install-${pkg_prefs[2]}" "$cache/to-install-${pkg_prefs[3]}-temp" > "$cache/to-install-${pkg_prefs[3]}" &&
+        cat "$cache/to-install-${pkg_prefs[3]}" >> "$cache/installable-temp"
+
+    # create list of packages which cannot be installed
+    sort "$cache/installable-temp" > "$cache/installable"
+    cp "$cache/to-install" "$cache/to-install-temp"
+    sort "$cache/to-install-temp" > "$cache/to-install"
+    grep -vxf "$cache/installable" "$cache/to-install" > "$cache/uninstallable"
+    [[ "$wine" -eq 1 ]] && sed -i '/wine/d' "$cache/uninstallable"
+
+    # convert config names to package names
+    for pref in "${pkg_prefs[@]}"; do
+        cp "$cache/to-install-$pref" "$cache/to-install-$pref-temp"
+        grep -f "$cache/to-install-$pref-temp" "$pack_mgr_dir/$pref" | cut -d',' -f1 > "$cache/to-install-$pref"
+    done
+
+    # remove all temporary files
+    rm "$cache"/*temp
+}
+
+agnostic_installing (){
+    ### FLATPAK ###
+    if [[ "$pkg_prefs" =~ 'flatpak' ]]; then
+        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ] && [[ "$proton_ge" -eq 1 ]] \
+        && echo 'com.valvesoftware.Steam.CompatibilityTool.Proton-GE' >> "$cache/to-install-flatpak" && sed -i '/proton_ge/d' "$cache/uninstallable"
+        [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ] && [[ "$boxtron" -eq 1 ]] \
+        && echo 'com.valvesoftware.Steam.CompatibilityTool.Boxtron' >> "$cache/to-install-flatpak" && sed -i '/boxtron/d' "$cache/uninstallable"
+        printf '\nInstalling flatpak packages...\n' && readarray -t pkg_list < "$cache/to-install-flatpak" && $root_cmd flatpak install flathub "${pkg_list[@]}" -y
+    fi
+
+    ### SNAP ###
+    if [[ "$pkg_prefs" =~ 'snap' ]]; then
+        sudo snap refresh
+        printf '\nInstalling snap packages...\n' && readarray -t pkg_list < "$cache/to-install-snap" && $root_cmd snap install "${pkg_list[@]}"
+        [[ "$veloren" -eq 1 ]] && sudo snap install veloren --beta
+    fi
+
+    ### APP IMAGES ###
+    if [[ "$pkg_prefs" =~ 'zap' ]]; then
+        echo 'The rest of the script is interactive. You will have to click through a few menus.'
+        read 'Ready to continue? [y/n]'
+        # kind of a hacky solution but for some reason it is impossible to loop through zap and you can't use it in a non-interactive mode
+        printf '\nInstalling app images...\nPlease interactively select each option (i.e. press enter when it says "Choose a release" and y when it says "Proceed?")' \
+        && sed -i 's/^/zap install /g' "$cache/to-install-zap" && sh "$cache/to-install-zap"
+        [[ "$heroic" -eq 1 ]] && zap install --github --from heroic-games-launcher/heroicgameslauncher
+    fi
+
+    ### LUTRIS ###
+    game_scripts 'overwatch' 'Overwatch'
+    game_scripts 'hearthstone' 'Hearthstone'
+    game_scripts 'heroes-of-the-storm' 'Heroes of the Storm'
+    game_scripts 'magic-the-gathering-arena' 'Magic: The Gathering Arena'
+    game_scripts 'gwent' 'Gwent'
+    game_scripts 'osu' 'osu!'
+}
+
+[ "$parent_distro" = 'arch' ] && $aur_helper -Syu --noconfirm
+[ "$parent_distro" = 'ubuntu' ] && $root_cmd apt update && $root_cmd apt upgrade -y
+[ "$parent_distro" = 'fedora' ] && $root_cmd upgrade --refresh -y
+
+[ "$distro" = 'Artix Linux' ] &&
+    # TODO: add note on readme that this script assumes your pacman.conf is the latest version (/etc/pacman.conf.pacnew)
+    bak '/etc/pacman.conf'
+
+    # enable lib32 repository
+    [ "$(grep -w '\[lib32\]' /etc/pacman.conf)" = '#[lib32]' ] && -i sed 's/#[lib32]/[lib32]/' /etc/pacman.conf
+    [ "$(grep -wA1 '\[lib32\]' /etc/pacman.conf | tail -1)" = '#Include = /etc/pacman.d/mirrorlist' ] &&
+        grep -nwA1 '\[lib32\]' /etc/pacman.conf | tail -1 | cut -d'-' -f1 | $root_cmd xargs -I% sed -i '%s/#//' /etc/pacman.conf
+
+    # enable multilib repository
+    [ "$(grep -w '\[multilib\]' /etc/pacman.conf)" = '#[multilib]' ] && sed -i 's/#[multilib]/[multilib]/' /etc/pacman.conf
+    [ "$(grep -wA1 '\[multilib\]' /etc/pacman.conf | tail -1)" = '#Include = /etc/pacman.d/mirrorlist-arch' ] &&
+        grep -nwA1 '\[multilib\]' /etc/pacman.conf | tail -1 | cut -d'-' -f1 | $root_cmd xargs -I% sed -i '%s/#//' /etc/pacman.conf &&
+
+    $root_cmd pacman -Syy lib32-artix-archlinux-support --noconfirm --needed # add support for lib32 packages (prevents the installation of Systemd as a dependency)
+    # TODO: add an echo command for every process (e.g. Updating..., Beginnning installation..., etc.)
+
+
+case "$parent_distro" in
+    'arch')
+        bak '/etc/pacman.conf'
+        echo 'Pacman supports parallel downloads. Enabling this would make installing packages faster.'
+        while true; do
+        echo
+        read -p 'Do you wish to enable parallel downloads? [y/n] ' yn
+        case "$yn" in
+            [Yy]*) echo '[Recommended: 20 for those with fast internet speeds, 5-10 for those with slow internet speeds]'
+                read -p 'How many parallel downloads would you like? ' parallel && $root_cmd sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $parallel/" /etc/pacman.conf
+                break ;;
+            [Nn]*) break ;;
+            * ) echo 'Please answer "yes" or "no".'
+        esac
+        done
+
+        # enable multilib repository
+        [ "$distro" != 'Artix' ] &&
+            [ "$(grep -w '\[multilib\]' /etc/pacman.conf)" = '#[multilib]' ] && sed -i 's/#[multilib]/[multilib]/' /etc/pacman.conf
+            [ "$(grep -wA1 '\[multilib\]' /etc/pacman.conf | tail -1)" = '#Include = /etc/pacman.d/mirrorlist' ] &&
+                grep -nwA1 '\[multilib\]' /etc/pacman.conf | tail -1 | cut -d'-' -f1 | $root_cmd xargs -I% sed -i '%s/#//' /etc/pacman.conf
+            $root_cmd pacman -Syy --noconfirm
+
+        check_installable
+
+        [ -n "$(grep 'steam' "$cache/to-install-arch")" ] && [[ "$proton_ge" -eq 1 ]] \
+        && echo 'protonup' >> "$cache/to-install-arch" && sed -i '/proton_ge/d' "$cache/uninstallable"
+
+        drivers
+        [[ "$wine" -eq 1 ]] && wine_install
+        [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-arch" && \
+        $aur_helper -S "${pkg_list[@]}" --noconfirm --needed
+        agnostic_installing ;;
+    'ubuntu')
+        $root_cmd add-apt-repository multiverse
+        $root_cmd dpkg --add-architecture i386
+        $root_cmd update
+
+        check_installable
+
+        drivers
+        [[ "$wine" -eq 1 ]] && wine_install
+        [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-ubuntu" && \
+        $root_cmd apt install "${pkg_list[@]}" -y
+        agnostic_installing ;;
+    'fedora')
+        $root_cmd dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm -y
+        $root_cmd dnf install https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm -y
+        $root_cmd check-update
+
+        check_installable
+        drivers
+        [[ "$wine" -eq 1 ]] && wine_install
+        [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-fedora" && \
+        $root_cmd dnf install "${pkg_list[@]}" -y
+        agnostic_installing ;;
+esac
+
+[ -n "$(<$cache/uninstallable)" ] && echo 'llgi: error: the following packages could not be installed:' && cat "$cache/uninstallable"
+printf '\nllgi: installation complete\nPlease reboot your system for the installation to take full affect.\n'
