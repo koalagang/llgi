@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Heroic Games Launcher
+Exec=/usr/bin/Heroic-1-11.0-alpha.AppImage
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/heroic-games-launcher/heroic-icon.png

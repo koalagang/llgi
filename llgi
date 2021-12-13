@@ -13,6 +13,7 @@ done
 
 # This directory is temporary. It will be moved to a more permanent spot in the future.
 pack_mgr_dir="./data/packaging-methods"
+desktop_entries_dir="./data/desktop-entries"
 
 # Check if the respective package managers are installed
 is_pkgmgr_installed (){
@@ -20,29 +21,7 @@ is_pkgmgr_installed (){
         pkg_prefs="$pkg_prefs $1"
     else
         echo "llgi: error: $1 not installed" && exit 0
-    fi
-}
-
-# Check distribution
-# TODO: move from lsb_release to /etc/os-release
-distro="$(lsb_release -is)"
-supported_distros="Arch Linux,Artix,ArcoLinux,EndeavourOS,Fedora,Ubuntu,Elementary OS,Pop!_OS,Linux Mint,Manjaro"
-echo "Distributon detected as $distro."
-[[ "$supported_distros" =~ "$distro" ]] && printf 'Your distribution is officially supported by llgi.\n\n'
-[[ "$supported_distros" =~ "$distro" ]] || printf "llgi: error: $distro is not officially supported by llgi\nPlease specify your parent distribution with the '-p' flag"
-case "$distro" in
-    'Arch Linux') parent_distro='arch' ;;
-    'ArcoLinux') parent_distro='arch' ;;
-    'EndeavourOS') parent_distro='arch' ;;
-    'Manjaro') parent_distro='arch' ;;
-    'Artix') parent_distro='arch' ;;
-    'Ubuntu') parent_distro='ubuntu' ;;
-    'Elementary OS') parent_distro='ubuntu' ;;
-    'Pop!_OS') parent_distro='ubuntu' ;;
-    'Linux Mint') parent_distro='ubuntu' ;;
-    'Fedora') parent_distro='fedora' ;;
-esac
-
+    fi ;}
 
 # All the flags
 while getopts 'vFASNa:dp:C:c:' OPT; do
@@ -74,6 +53,7 @@ while getopts 'vFASNa:dp:C:c:' OPT; do
           'arch') parent_distro='arch' ;;
           'fedora') parent_distro='fedora' ;;
           'fedora') parent_distro='fedora' ;;
+          export parent_distro
           *) printf "\nerror: $OPTARG is not a supported parent distribution\nSupported parent distributions: Ubuntu, Arch Linux, Fedora\n" && exit 0
         esac ;;
     C)
@@ -91,6 +71,21 @@ while getopts 'vFASNa:dp:C:c:' OPT; do
   esac
 done
 
+# Check distribution
+distro="$(grep -w 'NAME' /etc/os-release | cut -d'"' -f2)" && export distro
+echo "Distributon detected as $distro."
+case "$distro" in
+    'Arch Linux') parent_distro='arch' ;;
+    'Manjaro Linux') parent_distro='arch' ;;
+    'Artix Linux') parent_distro='arch' ;;
+    'Ubuntu') parent_distro='ubuntu' ;;
+    'Pop!_OS') parent_distro='ubuntu' ;;
+    'Linux Mint') parent_distro='ubuntu' ;;
+    'Fedora Linux') parent_distro='fedora' ;;
+esac
+[ -z "$parent_distro" ] &&
+    printf 'llgi: error: you parent distro was not detected.\nPlease specify your parent distro with the `-p` flag.\nSupported parent distros: Ubuntu, Arch, Fedora\n' && exit 0
+
 # Set root access tool to sudo if '-d' flag has not been parsed
 [ -z "$root_cmd" ] && export root_cmd='sudo'
 [ -z "$config" ] && export config="$XDG_CONFIG_HOME/llgi" && mkdir -p "$config"
@@ -102,9 +97,7 @@ export pkg_prefs=($pkg_prefs)
 # If using an Arch-based distribution and an AUR helper has not been specified, stop
 [ "$parent_distro" = 'arch' ] && [ -z "$aur_helper" ] && echo 'llgi: error: no AUR helper specified' && exit 0
 
-bak (){
-    echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak
-}
+bak (){; echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak ;}
 
 # software which requires special treatment
 # (can't simply be installed as a single package from the repos)
@@ -125,29 +118,15 @@ source "$config/llgi.conf"
 wine_install (){
     printf '\nInstalling wine...\n'
     case "$parent_distro" in
-        'arch') # note that multilib must be enabled for this but it is already enabled before running the wine_install function
+        'arch') # note that multilib must be enabled (is enabled earlier in the script)
             $root_cmd pacman -S wine-staging giflib lib32-giflib libpng lib32-libpng libldap lib32-libldap gnutls lib32-gnutls \
                 mpg123 lib32-mpg123 openal lib32-openal v4l-utils lib32-v4l-utils libpulse lib32-libpulse libgpg-error \
                 lib32-libgpg-error alsa-plugins lib32-alsa-plugins alsa-lib lib32-alsa-lib libjpeg-turbo lib32-libjpeg-turbo \
                 sqlite lib32-sqlite libxcomposite lib32-libxcomposite libxinerama lib32-libgcrypt libgcrypt lib32-libxinerama \
                 ncurses lib32-ncurses opencl-icd-loader lib32-opencl-icd-loader libxslt lib32-libxslt libva lib32-libva gtk3 \
                 lib32-gtk3 gst-plugins-base-libs lib32-gst-plugins-base-libs vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm ;;
-        'ubuntu') $root_cmd dpkg --add-architecture i386 && wget -nc https://dl.winehq.org/wine-builds/winehq.key -O "$cache/winehq.key" && $root_cmd apt-key add "$cache/winehq.key"
-            case "$(lsb_release -rs)" in
-                '21.04') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ hirsute main' ;;
-                '20.10') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ groovy main' ;;
-                '20.04') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ focal main' ;;
-                '19.10') [ "$(lsb_release -is)" = 'Linux Mint' ] && $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ bionic main' ||
-                    $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ eoan main' ;;
-                '19.04') [ "$(lsb_release -is)" = 'Linux Mint' ] && $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ bionic main' ||
-                    $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ disco main' ;;
-                '18.10') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ cosmic main' ;;
-                '18.04') $root_cmd add-apt-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ bionic main' &&
-                    [ "$(lsb_release -is)" = 'ubuntu' ] && $root_cmd add-apt-repository ppa:cybermax-dexter/sdl2-backport
-            esac
-            $root_cmd apt install --install-recommends winehq-staging wine-staging wine-staging-i386 wine-staging-amd64 libgnutls30:i386 libldap-2.4-2:i386 \
-            libgpg-error0:i386 libxml2:i386 libasound2-plugins:i386 libsdl2-2.0-0:i386 libfreetype6:i386 libdbus-1-3:i386 libsqlite3-0:i386 -y
-            rm "$cache/winehq.key" ;;
+                # note that 32-bit support must be enabled (is enabled earlier in the script)
+        'ubuntu') $root_cmd apt install wine64 wine32 libasound2-plugins:i386 libsdl2-2.0-0:i386 libdbus-1-3:i386 libsqlite3-0:i386 -y ;;
         'fedora') $root_cmd dnf install wine -y
         esac
 }
@@ -184,37 +163,26 @@ drivers (){
     esac
 }
 
-game_scripts (){
-    [ -z "$(command -v wine)" ] && wine_install
-    if [ -z "$(command -v lutris)" ]; then
-        case "$parent_distro" in
-            'arch') $root_cmd pacman -S lutris --needed --noconfirm ;;
-            'ubuntu') $root_cmd add-apt-repository ppa:lutris-team/lutris && $root_cmd apt update && $root_cmd apt install lutris -y ;;
-            'fedora') $root_cmd dnf install lutris -y
-        esac
-    fi
-    [[ "$1" -eq 1 ]] \
-        && printf '\nllgi: please manually click through the graphical prompts which pop up.\nWhen the installation is complete, close all windows which were opened.\n' \
-        && notify-send 'llgi' 'Please manually click through the graphical prompts which pop up.' -t 10000 \
-        && notify-send 'llgi' 'When the installation is complete, close all windows which were opened.' -t 10000 \
-        && printf '\nllgi: Now installing %s\n' "$2" && notify-send 'llgi' "Now installing $2." -t 10000
-        && lutris lutris:"$1"
-}
-
 libraries (){
     case "$parent_distro"in
         'arch') $root_cmd pacman -S sdl2 lib32-libbsd libbsd lib32-openal openal --noconfirm --needed ;;
         'ubuntu') $root_cmd apt install libsdl2-dev libbsd-dev libopenal-dev -y ;;
         'fedora') $root_cmd dnf install SDL2.i686 SDL2.x86_64 libbsd.i686 libbsd.x86_64 openal-soft.i686 openal.x84_64 -y
-    esac
-}
+    esac ;}
 
-deb_install (){
-    [[ "$2" -eq 1 ]] && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" && rm "$cache/$2.deb"
-}
-
-ppa_install (){
-    [[ "$2" -eq 1 ]] && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2"
+# Mini functions
+# These are here to help me get less wet (write everything twice) and stay dry (don't repeat yourself) with the fallback function.
+deb_install (){; [[ "$2" -eq 1 ]] && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
+ppa_install (){; [[ "$2" -eq 1 ]] && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2" ;}
+download_extract_tar (){; [[ "$2" -eq 1 ]] && wget -q --show-progress "$1" -O "$cache/$2.tar.gz" && tar xf "$cache/$2.tar.gz" -C "$cache" ;}
+install_zip (){
+    mkdir "$cache/$2"
+    wget -q --show-progress "$1" -O "$cache/$2/$2.zip"
+    unzip "$cache/$2/$2.zip" -d "$cache/$2"
+    rm "$cache/$2/$2.zip"
+    $root_cmd mv "$cache/$2" '/usr/lib'
+    $root_cmd cp "$desktop_entries_dir/$2/$2.desktop" '/usr/share/applications'
+    $root_cmd mkdir -p "/usr/share/icons/$2" && $root_cmd cp "$desktop_entries/$2/$2-icon.png" "/usr/share/icons/$2"
 }
 
 # fallback methods for installing packages if they are not available in native, flatpak, snap or appimage form
@@ -248,9 +216,78 @@ fallback (){
                 -O "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z" && $root_cmd apt install p7zip-full -y && 7z x "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z" \
                 && $root_cmd apt install "$cache/flashpoint-infinity_8.2-2_amd64.deb" -y && $root_cmd apt remove p7zip-full -y && $root_cmd apt autoremove -y
 
+            # Boxtron
+            [[ "$boxtron" -eq 1 ]] && $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" \
+                && $root_cmd make -C "$cache/boxtron" install
+
             $root_cmd apt update && $root_cmd apt -f install -y && $root_cmd install "$ppa_pkgs" -y ;;
-        'fedora') echo 'hi'
+        'fedora')
+            # Minecraft
+            if [[ "$minecraft_launcher" -eq 1 ]]; then
+                download_extract_tar 'https://launcher.mojang.com/download/Minecraft.tar.gz' 'minecraft'
+                chmod a+x "$cache/minecraft/minecraft-launcher/minecraft-launcher"
+                $root_cmd mv 'minecraft/minecraft-launcher/minecraft-launcher' '/usr/bin' && $root_cmd cp "$desktop_entries_dir/minecraft/minecraft.desktop" '/usr/share/applications'
+                $root_cmd mkdir -p '/usr/share/icons/minecraft' && $root_cmd cp "$desktop_entries_dir/minecraft/minecraft-icon.png" '/usr/share/icons/minecraft'
+            fi
+
+            # MultiMC
+            if [[ "$multimc" -eq 1 ]]; then
+                download_extract_tar 'https://files.multimc.org/downloads/mmc-stable-lin64.tar.gz' 'multimc'
+                chmod a+x "$cache/multimc/MultiMC"
+                $root_cmd mv "$cache/multimc" '/usr/lib'
+                $root_cmd cp "$desktop_entries_dir/multimc/multimc.desktop" '/usr/share/applications'
+                $root_cmd mkdir -p '/usr/share/icons/MultiMC' && $root_cmd cp "$desktop_entries_dir/multimc/multimc-icon.png" '/usr/share/icons/MultiMC'
+            fi
+
+            # Flashpoint Infinity
+            [[ "$flashpoint_infinity" -eq 1 ]] && $root_cmd dnf copr enable heartsdo/flashpoint-infinity -y && $root_cmd dnf install flashpoint-infinity -y
+
+            # Veloren
+            [[ "$veloren" -eq 1 ]] && $root_cmd dnf copr enable frinksy/airshipper -y && $root_cmd dnf install airshipper -y
+
+            # Boxtron
+            [[ "$boxtron" -eq 1 ]] && $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y \
+                && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" && $root_cmd make -C "$cache/boxtron" install
     esac
+
+    # rpcs3
+    if [[ "$rpcs3" -eq 1 ]]; then
+        sh -c "cd $cache && curl -JLO 'https://rpcs3.net/latest-appimage'"
+        $root_cmd chmod a+x "$cache"/rpcs3-*_linux64.AppImage
+        $root_cmd mv "$cache"/rpcs3-*_linux64.AppImage '/usr/bin'
+        $root_cmd cp "$desktop_entries_dir/rpcs3/rspc3.desktop" '/usr/share/applications'
+        $root_cmd mkdir -p '/usr/share/icons/rpcs3' && $root_cmd cp "$desktop_entries_dir/rpcs3/rpcs3-icon.png" '/usr/share/icons/rpcs3'
+    fi
+
+    # LiveSplit
+    [[ "$livesplit" -eq 1 ]] && [[ "$wine" -ne 1 ]] && wine_install && install_zip 'https://github.com/LiveSplit/LiveSplit/releases/download/1.8.16/LiveSplit_1.8.16.zip' 'livesplit'
+
+    # Scarab
+    [[ "$scarab" -eq 1 ]] && install_zip 'https://github.com/fifty-six/Scarab/releases/download/v1.5.0.0/linux.zip' 'scarab'
+
+    # NoiseTorch
+    if [[ "$noisetorch" -eq 1 ]]; then
+        wget -q --show-progress 'https://github.com/lawl/NoiseTorch/releases/download/0.11.4/NoiseTorch_x64.tgz'
+        mkdir "$cache/noisetorch"
+        tar -C "$cache/noisetorch" -xzf 'NoiseTorch_x64.tgz' && $root_cmd cp -r "$cache/noisetorch/.local"/* '/usr'
+        $root_cmd setcap 'CAP_SYS_RESOURCE=+ep' '/usr/bin/noisetorch'
+    fi
+
+    # Itch
+    if [[ "$itch" -eq 1 ]]; then
+        printf '\nInstalling itch...\nA window will temporarily open and then close itself. Please do not manually close it.'
+        wget -q --show-progress 'https://itch.io/app/download?platform=linux' -O "$cache/itch-setup"
+        chmod a+x "$cache/itch-setup"
+        sh -c "cd $cache && ./itch-setup"
+        killall 'itch'
+    fi
+
+    # Boxtron
+    if [[ "$boxtron" -eq 1 ]]; then
+        $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
+        git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron"
+        $root_cmd make -C "$cache/boxtron" install
+    fi
 }
 
 check_installable (){
@@ -304,9 +341,18 @@ check_installable (){
         cp "$cache/to-install-$pref" "$cache/to-install-$pref-temp"
         grep -f "$cache/to-install-$pref-temp" "$pack_mgr_dir/$pref" | cut -d',' -f1 > "$cache/to-install-$pref"
     done
+}
 
-    # remove all temporary files
-    rm "$cache"/*temp
+game_scripts (){
+    [ -z "$(command -v wine)" ] && wine_install
+    if [ -z "$(command -v lutris)" ]; then
+        case "$parent_distro" in
+            'arch') $root_cmd pacman -S lutris --needed --noconfirm ;;
+            'ubuntu') $root_cmd add-apt-repository ppa:lutris-team/lutris && $root_cmd apt update && $root_cmd apt install lutris -y ;;
+            'fedora') $root_cmd dnf install lutris -y
+        esac
+    fi
+    [[ "$1" -eq 1 ]] && echo "Installing $2..." && lutris lutris:"$1"
 }
 
 agnostic_installing (){
@@ -331,15 +377,26 @@ agnostic_installing (){
     ### APP IMAGES ###
     if [[ "$pkg_prefs" =~ 'zap' ]]; then
         echo 'The rest of the script is interactive. You will have to click through a few menus.'
-        read 'Press ENTER when you are ready to continue or CTRL+C to cancel the script.'
+        read -p 'Press ENTER when you are ready to continue or CTRL+C to cancel the script. '
         # kind of a hacky solution but for some reason it is impossible to loop through zap and you can't use it in a non-interactive mode
         printf '\nInstalling app images...\nPlease interactively select each option\n'
-        [ -n "$(grep -i 'heroic' "$cache/to-install-zap")" ] && sed -i '/heroic/d' "$cache/to-install-zap" && zap install --github --from 'heroic-games-launcher/heroicgameslauncher'
-        [ -n "$(grep -i 'gamehub' "$cache/to-install-zap")" ] && sed -i '/gamehub/d' "$cache/to-install-zap" && zap install --github --from 'tkashkin/GameHub'
+        [ -n "$(grep -i 'heroic' $cache/to-install-zap)" ] && sed -i '/heroic/d' "$cache/to-install-zap" && zap install --github --from 'heroic-games-launcher/heroicgameslauncher'
+        [ -n "$(grep -i 'gamehub' $cache/to-install-zap)" ] && sed -i '/gamehub/d' "$cache/to-install-zap" && zap install --github --from 'tkashkin/GameHub'
         sed -i 's/^/zap install /g' "$cache/to-install-zap" && sh "$cache/to-install-zap"
     fi
 
     ### LUTRIS ###
+    echo 'IMPORTANT: READ THE BELOW TEXT BEFORE CONTINUING'
+    echo 'Please click through the Lutris installation menus.'
+    echo 'When the games launcher (e.g. Blizzard app) opens, sign in and install the game then close the app after finishing the installation of that game.'
+    echo 'NOTE: even if you chose to install multiple games from the same client - e.g. if you want to install Hearthstone and Overwatch which are both from the Blizzard app,'
+    echo 'do not install them in the same window. When it says "Installing Overwatch..." click through and install Overwatch as instructed above and then close the app'
+    echo 'and then a Hearthstone installer will open separately for you to repeat the process except this time with Hearthstone. This is because, in order to have the best effect,'
+    echo 'Lutris uses per-game tweaking so you will technically have a separate Blizzard client for each game.'
+    printf 'Both games with appear in your Lutris library so treat Lutris as your client instead.\n\n'
+
+    read -p 'Press ENTER when you are ready to continue or CTRL+C to cancel the script. '
+    echo 'Starting game installation(s)...'
     game_scripts 'overwatch' 'Overwatch'
     game_scripts 'hearthstone' 'Hearthstone'
     game_scripts 'heroes-of-the-storm' 'Heroes of the Storm'
@@ -352,7 +409,7 @@ agnostic_installing (){
 [ "$parent_distro" = 'ubuntu' ] && $root_cmd apt update && $root_cmd apt upgrade -y
 [ "$parent_distro" = 'fedora' ] && $root_cmd upgrade --refresh -y
 
-[ "$distro" = 'Artix Linux' ] &&
+if [ "$distro" = 'Artix Linux' ]; then
     # TODO: add note on readme that this script assumes your pacman.conf is the latest version (/etc/pacman.conf.pacnew)
     bak '/etc/pacman.conf'
 
@@ -368,7 +425,7 @@ agnostic_installing (){
 
     $root_cmd pacman -Syy lib32-artix-archlinux-support --noconfirm --needed # add support for lib32 packages (prevents the installation of Systemd as a dependency)
     # TODO: add an echo command for every process (e.g. Updating..., Beginnning installation..., etc.)
-
+fi
 
 case "$parent_distro" in
     'arch')
@@ -400,6 +457,7 @@ case "$parent_distro" in
 
         drivers
         [[ "$wine" -eq 1 ]] && wine_install
+        [[ "$extra_libraries" -eq 1 ]] && libraries
         [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-arch" && \
         $aur_helper -S "${pkg_list[@]}" --noconfirm --needed
         agnostic_installing ;;
@@ -412,6 +470,7 @@ case "$parent_distro" in
 
         drivers
         [[ "$wine" -eq 1 ]] && wine_install
+        [[ "$extra_libraries" -eq 1 ]] && libraries
         [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-ubuntu" && \
         $root_cmd apt install "${pkg_list[@]}" -y
         agnostic_installing ;;
@@ -423,10 +482,13 @@ case "$parent_distro" in
         check_installable
         drivers
         [[ "$wine" -eq 1 ]] && wine_install
+        [[ "$extra_libraries" -eq 1 ]] && libraries
+        [[ "$obs_studio" -eq 1 ]] && [[ "$nvidia" -eq 1 ]] && echo 'xorg-x11-drv-nvidia-cuda' >> "$cache/to-install-native-fedora"
         [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-fedora" && \
         $root_cmd dnf install "${pkg_list[@]}" -y
         agnostic_installing ;;
 esac
 
 [ -n "$(<$cache/uninstallable)" ] && echo 'llgi: error: the following packages could not be installed:' && cat "$cache/uninstallable"
+$root_cmd rm -r "$cache"/*
 printf '\nllgi: installation complete\nPlease reboot your system for the installation to take full affect.\n'

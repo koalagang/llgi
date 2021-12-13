@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=LiveSplit
+Exec=wine '/usr/lib/livesplit/livesplit.exe'
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/livesplit/livesplit-icon.png
