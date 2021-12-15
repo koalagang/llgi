@@ -4,12 +4,13 @@ printf "WARNING: just as you would with running any other script, you are hereby
 while true; do
     read -p 'Do you wish to continue? [y/N] ' yn
     case "$yn" in
-        [Yy]* ) printf '\nllgi: option entered: yes\nContinuing script.\n\n' && break ;;
-        [Nn]* ) printf '\nllgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
-        '') printf '\nllgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
+        [Yy]* ) printf 'llgi: option entered: yes\nContinuing script.\n' && break ;;
+        [Nn]* ) printf 'llgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
+        '') printf 'llgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
         * ) echo 'Please answer "yes" or "no".'
     esac
 done
+
 
 # This directory is temporary. It will be moved to a more permanent spot in the future.
 pack_mgr_dir="./data/packaging-methods"
@@ -24,7 +25,7 @@ is_pkgmgr_installed (){
     fi ;}
 
 # All the flags
-while getopts 'vFASNa:dp:C:c:' OPT; do
+while getopts 'vFASNa:dC:c:' OPT; do
   case "$OPT" in
     v) echo 'llgi version: ALPHA' && exit 0 ;;
     F) is_pkgmgr_installed 'flatpak' ;;
@@ -43,19 +44,6 @@ while getopts 'vFASNa:dp:C:c:' OPT; do
         else
             echo 'llgi: error: doas not installed' && exit 0
         fi ;;
-    p) # Specify the parent distribution if yours isn't officially supported
-        case "$OPTARG" in
-          'ubuntu') parent_distro='ubuntu' ;;
-          'ubuntu') parent_distro='ubuntu' ;;
-          'Arch Linux') parent_distro='arch' ;;
-          'arch linux') parent_distro='arch' ;;
-          'arch') parent_distro='arch' ;;
-          'arch') parent_distro='arch' ;;
-          'fedora') parent_distro='fedora' ;;
-          'fedora') parent_distro='fedora' ;;
-          export parent_distro
-          *) printf "\nerror: $OPTARG is not a supported parent distribution\nSupported parent distributions: Ubuntu, Arch Linux, Fedora\n" && exit 0
-        esac ;;
     C)
         if [ -n "$(test -r $OPTARG)" ]; then
             config="$OPTARG"
@@ -71,49 +59,68 @@ while getopts 'vFASNa:dp:C:c:' OPT; do
   esac
 done
 
-# Check distribution
-distro="$(grep -w 'NAME' /etc/os-release | cut -d'"' -f2)" && export distro
-echo "Distributon detected as $distro."
-case "$distro" in
-    'Arch Linux') parent_distro='arch' ;;
-    'Manjaro Linux') parent_distro='arch' ;;
-    'Artix Linux') parent_distro='arch' ;;
-    'Ubuntu') parent_distro='ubuntu' ;;
-    'Pop!_OS') parent_distro='ubuntu' ;;
-    'Linux Mint') parent_distro='ubuntu' ;;
-    'Fedora Linux') parent_distro='fedora' ;;
-esac
-[ -z "$parent_distro" ] &&
-    printf 'llgi: error: you parent distro was not detected.\nPlease specify your parent distro with the `-p` flag.\nSupported parent distros: Ubuntu, Arch, Fedora\n' && exit 0
-
 # Set root access tool to sudo if '-d' flag has not been parsed
 [ -z "$root_cmd" ] && export root_cmd='sudo'
 [ -z "$config" ] && export config="$XDG_CONFIG_HOME/llgi" && mkdir -p "$config"
 [ -z "$cache" ] && export cache="$XDG_CACHE_HOME/llgi" && mkdir -p "$cache"
 
-[ -z "$pkg_prefs" ] && echo 'llgi: error: packaging preference not set' && exit 0
+# TODO: add automatic installation of non-native package managers
+[ -z "$pkg_prefs" ] && printf 'llgi: packaging preference not set:\nreverting to default\n'
+case "$parent_distro" in
+    'arch') pkg_prefs='native zap' ;;
+    'ubuntu')
+        if [ "$distro" = 'Linux Mint' ] || [ "$distro" = 'Pop!_OS' ]; then
+            pkg_prefs='native flatpak zap'
+        else
+            pkg_prefs='native snap zap'
+        fi ;;
+    'fedora') pkg_prefs='native flatpak zap'
 export pkg_prefs=($pkg_prefs)
 
-# If using an Arch-based distribution and an AUR helper has not been specified, stop
-[ "$parent_distro" = 'arch' ] && [ -z "$aur_helper" ] && echo 'llgi: error: no AUR helper specified' && exit 0
+# Exit if using an Arch-based distribution and an AUR helper has not been specified
+[ "$parent_distro" = 'arch' ] && [ -z "$aur_helper" ] && printf 'llgi: error: no AUR helper specified\nPlease specify an AUR helper with the `-a` flag\nNOTE: the AUR helper must be capable of acting as a pacman wrapper and using the same flags (i.e. -Syu)\n' && exit 0
+
+# Distro check
+distro="$(grep -w 'NAME' /etc/os-release | cut -d'"' -f2)" && export distro
+echo "Distributon detected as $distro."
+[ -n "$(command -v 'dnf')" ] && parent_distro='fedora'
+[ -n "$(command -v 'apt')" ] && parent_distro='ubuntu'
+[ -n "$(command -v 'pacman')" ] && parent_distro='arch'
+[ -z "$parent_distro" ] && echo 'llgi: error: your Linux distribution is not supported' && exit 0
+
+echo 'Upgrading packages...'
+[ "$parent_distro" = 'arch' ] && $aur_helper -Syu --noconfirm
+[ "$parent_distro" = 'ubuntu' ] && $root_cmd apt update && $root_cmd apt upgrade -y
+[ "$parent_distro" = 'fedora' ] && $root_cmd upgrade --refresh -y
+
+# Dependency check
+deps=('git' 'wget' 'curl' 'unzip' 'tar')
+echo "${deps[@]}" | sed 's/ /\n/g' | xargs -I% -n 1 sh -c 'command -v "%" >/dev/null || echo "error: missing dependency: %" | tee "/tmp/llgi-missing-deps"'
+[ -e '/tmp/llgi-missing-deps' ] && echo 'Installing missing llgi dependencies...' && rm '/tmp/llgi-missing-deps'
+case "$parent_distro" in
+    'arch') $root_cmd pacman -S "${deps[@]}" --needed --noconfirm ;;
+    'ubuntu') $root_cmd apt install "${deps[@]}" -y ;;
+    'fedora') $root_cmd dnf install "${deps[@]}" -y
+esac
 
 bak (){; echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak ;}
 
 # software which requires special treatment
 # (can't simply be installed as a single package from the repos)
 # these are not included in the package lists
+# TODO: make this list more complete (consider looping through)
 source "$config/llgi.conf"
 [ -n "$wine" ] && export wine
-[ -n "$proton_ge" ] && export proton_ge
+[ -n "$protonup" ] && export protonup
 [ -n "$boxtron" ] && export boxtron
 [ -n "$heroic" ] && export heroic
 [ -n "$veloren" ] && export veloren
-[ -n "$overwatch" ] && export overwatch
-[ -n "$hearthstone" ] && export hearthstone
-[ -n "$heroes_of_the_storm" ] && export heroes_of_the_storm
-[ -n "$magic_the_gathering_arena" ] && export magic_the_gathering_arena
-[ -n "$gwent" ] && export gwent
-[ -n "$osu" ] && export osu
+[ -n "$overwatch" ] && export overwatch && export lutris=1
+[ -n "$hearthstone" ] && export hearthstone && export lutris=1
+[ -n "$heroes_of_the_storm" ] && export heroes_of_the_storm && export lutris=1
+[ -n "$magic_the_gathering_arena" ] && export magic_the_gathering_arena && export lutris=1
+[ -n "$gwent" ] && export gwent && export lutris=1
+[ -n "$osu" ] && export osu && export lutris=1
 
 wine_install (){
     printf '\nInstalling wine...\n'
@@ -172,8 +179,8 @@ libraries (){
 
 # Mini functions
 # These are here to help me get less wet (write everything twice) and stay dry (don't repeat yourself) with the fallback function.
-deb_install (){; [[ "$2" -eq 1 ]] && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
 ppa_install (){; [[ "$2" -eq 1 ]] && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2" ;}
+deb_install (){; [[ "$2" -eq 1 ]] && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
 download_extract_tar (){; [[ "$2" -eq 1 ]] && wget -q --show-progress "$1" -O "$cache/$2.tar.gz" && tar xf "$cache/$2.tar.gz" -C "$cache" ;}
 install_zip (){
     mkdir "$cache/$2"
@@ -184,8 +191,27 @@ install_zip (){
     $root_cmd cp "$desktop_entries_dir/$2/$2.desktop" '/usr/share/applications'
     $root_cmd mkdir -p "/usr/share/icons/$2" && $root_cmd cp "$desktop_entries/$2/$2-icon.png" "/usr/share/icons/$2"
 }
+steam_compatibility_tools (){
+    if [ -z "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
+        if [[ "$boxtron" -eq 1 ]]; then
+            case "$parent_distro" in
+                'ubuntu') $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y ;;
+                'fedora') $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
+            esac
+            $root_cmd make -C "$cache/boxtron" install && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" && $root_cmd make -C "$cache/boxtron" install
+        fi
+        [[ "$protonup" -eq 1 ]] && git clone 'https://github.com/AUNaseef/protonup.git' protonup_install && sh -c "cd $cache/protonup_install && $root_cmd python3 setup.py install"
+    elif [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
+            [[ "$protonup" -eq 1 ]] && echo 'com.valvesoftware.Steam.CompatibilityTool.Proton-GE' >> "$cache/to-install-flatpak"
+            echo 'com.valvesoftware.Steam.CompatibilityTool.Boxtron' >> "$cache/to-install-flatpak"
+        fi
+    fi
+    [[ "$boxtron" -eq 1 ]] && sed -i '/boxtron/d' "$cache/uninstallable"
+    [[ "$protonup" -eq 1 ]] && sed -i '/protonup/d' "$cache/uninstallable"
+}
 
 # fallback methods for installing packages if they are not available in native, flatpak, snap or appimage form
+# TODO: add a fallback for every single package
 fallback (){
     case "$parent_distro" in
         # no need for Arch because it has native access to all the packages
@@ -202,6 +228,8 @@ fallback (){
             elif [[ "$vkbasalt" -eq 1 ]]; then
                 $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y
             fi
+            # These were not included in the above if statement because then only one would run,
+            # so, by doing it this way, then if multiple are enabled then all can be run
             [[ "$goverlay" -eq 1 ]] && ppa_pkgs="$ppa_pkgs goverlay"
             [[ "$mangohud" -eq 1 ]] && ppa_pkgs="$ppa_pkgs mangohud"
             [[ "$vkbasalt" -eq 1 ]] && ppa_pkgs="$ppa_pkgs vkbasalt"
@@ -212,14 +240,16 @@ fallback (){
             deb_install 'https://github.com/sharkwouter/minigalaxy/releases/download/1.1.0/minigalaxy_1.1.0_all.deb' 'minigalaxy'
             deb_install 'https://launcher.mojang.com/download/Minecraft.deb' 'minecraft'
             deb_install 'https://files.multimc.org/downloads/multimc_1.6-1.deb' 'multimc'
-            [[ "$flashpoint_infinity" -eq 1 ]] && wget -q --show-progress 'https://bluepload.unstable.life/flashpoint-infinity-8-2-2-amd64-deb.7z' \
-                -O "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z" && $root_cmd apt install p7zip-full -y && 7z x "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z" \
-                && $root_cmd apt install "$cache/flashpoint-infinity_8.2-2_amd64.deb" -y && $root_cmd apt remove p7zip-full -y && $root_cmd apt autoremove -y
 
-            # Boxtron
-            [[ "$boxtron" -eq 1 ]] && $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" \
-                && $root_cmd make -C "$cache/boxtron" install
+            # In some of the below statements, using 'if' is not strictly necessary but I chose to use them because otherwise I would require a lot of '&&' signs
+            # Flashpoint Infinity
+            if [[ "$flashpoint_infinity" -eq 1 ]]; then
+                wget -q --show-progress 'https://bluepload.unstable.life/flashpoint-infinity-8-2-2-amd64-deb.7z' -O "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z"
+                $root_cmd apt install p7zip-full -y && 7z x "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z"
+                $root_cmd apt install "$cache/flashpoint-infinity_8.2-2_amd64.deb" -y && $root_cmd apt remove p7zip-full -y && $root_cmd apt autoremove -y
+            fi
 
+            # Install the ppa packages, along with any missing dependencies of the deb packages
             $root_cmd apt update && $root_cmd apt -f install -y && $root_cmd install "$ppa_pkgs" -y ;;
         'fedora')
             # Minecraft
@@ -244,23 +274,22 @@ fallback (){
 
             # Veloren
             [[ "$veloren" -eq 1 ]] && $root_cmd dnf copr enable frinksy/airshipper -y && $root_cmd dnf install airshipper -y
-
-            # Boxtron
-            [[ "$boxtron" -eq 1 ]] && $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y \
-                && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" && $root_cmd make -C "$cache/boxtron" install
     esac
 
     # rpcs3
     if [[ "$rpcs3" -eq 1 ]]; then
         sh -c "cd $cache && curl -JLO 'https://rpcs3.net/latest-appimage'"
         $root_cmd chmod a+x "$cache"/rpcs3-*_linux64.AppImage
-        $root_cmd mv "$cache"/rpcs3-*_linux64.AppImage '/usr/bin'
-        $root_cmd cp "$desktop_entries_dir/rpcs3/rspc3.desktop" '/usr/share/applications'
+        $root_cmd mv "$cache"/rpcs3-*_linux64.AppImage '/usr/bin/rpcs3'
+        $root_cmd cp "$desktop_entries_dir/rpcs3/rpcs3.desktop" '/usr/share/applications'
         $root_cmd mkdir -p '/usr/share/icons/rpcs3' && $root_cmd cp "$desktop_entries_dir/rpcs3/rpcs3-icon.png" '/usr/share/icons/rpcs3'
     fi
 
     # LiveSplit
-    [[ "$livesplit" -eq 1 ]] && [[ "$wine" -ne 1 ]] && wine_install && install_zip 'https://github.com/LiveSplit/LiveSplit/releases/download/1.8.16/LiveSplit_1.8.16.zip' 'livesplit'
+    if [[ "$livesplit" -eq 1 ]]; then
+        [[ "$wine" -ne 1 ]] && wine_install # install wine if it has not already been installed (livesplit is not natively supported on linux)
+        install_zip 'https://github.com/LiveSplit/LiveSplit/releases/download/1.8.16/LiveSplit_1.8.16.zip' 'livesplit'
+    fi
 
     # Scarab
     [[ "$scarab" -eq 1 ]] && install_zip 'https://github.com/fifty-six/Scarab/releases/download/v1.5.0.0/linux.zip' 'scarab'
@@ -282,12 +311,7 @@ fallback (){
         killall 'itch'
     fi
 
-    # Boxtron
-    if [[ "$boxtron" -eq 1 ]]; then
-        $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
-        git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron"
-        $root_cmd make -C "$cache/boxtron" install
-    fi
+    steam_compatibility_tools
 }
 
 check_installable (){
@@ -299,7 +323,7 @@ check_installable (){
         sort "$cache/to-install-$pref-temp" | uniq -d > "$cache/to-install-$pref"
     done
 
-    # remove packages in common which have a lower priority
+    # remov packages in common which have a lower priority
     # e.g. if the order of priority (descending) is snap, flatpak, zap:
     # if flatpak contains anything which is also in snap, remove it from flatpak
     # if zap contains anything which is in either snap or flatpak, remove it from zap
@@ -358,16 +382,24 @@ game_scripts (){
 agnostic_installing (){
     ### FLATPAK ###
     if [[ "$pkg_prefs" =~ 'flatpak' ]]; then
+        [ -z "$(command -v 'flatpak')" ] && \
+        case "$parent_distro" in
+            'arch') $root_cmd pacman -S flatpak --noconfirm ;;
+            'ubuntu') $root_cmd add-apt-repository ppa:flatpak/stable && $root_cmd apt update && $root_cmd apt install flatpak -y ;;
+            'fedora') $root_cmd dnf install flatpak -y
+        esac
         flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ] && [[ "$proton_ge" -eq 1 ]] \
-        && echo 'com.valvesoftware.Steam.CompatibilityTool.Proton-GE' >> "$cache/to-install-flatpak" && sed -i '/proton_ge/d' "$cache/uninstallable"
-        [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ] && [[ "$boxtron" -eq 1 ]] \
-        && echo 'com.valvesoftware.Steam.CompatibilityTool.Boxtron' >> "$cache/to-install-flatpak" && sed -i '/boxtron/d' "$cache/uninstallable"
         printf '\nInstalling flatpak packages...\n' && readarray -t pkg_list < "$cache/to-install-flatpak" && $root_cmd flatpak install flathub "${pkg_list[@]}" -y
     fi
 
     ### SNAP ###
     if [[ "$pkg_prefs" =~ 'snap' ]]; then
+        [ -z "$(command -v 'snap')" ] && \
+        case "$parent_distro" in
+            'arch') $root_cmd pacman -S snapd --noconfirm ;;
+            'ubuntu') [ "$distro" = 'Linux Mint' ] && $root_cmd rm /etc/apt/preferences.d/nosnap.pref && $root_cmd apt update ; $root_cmd apt install snapd -y ;;
+            'fedora') $root_cmd dnf install snapd -y
+        esac
         printf '\nInstalling snap packages...\n'
         $root_cmd snap refresh
         [ -n "$(grep -i 'veloren' "$cache/to-install-snap")" ] && sed -i '/veloren/d' "$cache/to-install-snap" && $root_cmd snap install veloren --beta
@@ -376,6 +408,8 @@ agnostic_installing (){
 
     ### APP IMAGES ###
     if [[ "$pkg_prefs" =~ 'zap' ]]; then
+        [ -z "$(command -v 'zap')" ] &&
+            $root_cmd wget 'https://github.com/srevinsaju/zap/releases/download/continuous/zap-amd64 -O /usr/local/bin/zap' && $root_cmd chmod +x /usr/local/bin/zap
         echo 'The rest of the script is interactive. You will have to click through a few menus.'
         read -p 'Press ENTER when you are ready to continue or CTRL+C to cancel the script. '
         # kind of a hacky solution but for some reason it is impossible to loop through zap and you can't use it in a non-interactive mode
@@ -386,23 +420,25 @@ agnostic_installing (){
     fi
 
     ### LUTRIS ###
-    echo 'IMPORTANT: READ THE BELOW TEXT BEFORE CONTINUING'
-    echo 'Please click through the Lutris installation menus.'
-    echo 'When the games launcher (e.g. Blizzard app) opens, sign in and install the game then close the app after finishing the installation of that game.'
-    echo 'NOTE: even if you chose to install multiple games from the same client - e.g. if you want to install Hearthstone and Overwatch which are both from the Blizzard app,'
-    echo 'do not install them in the same window. When it says "Installing Overwatch..." click through and install Overwatch as instructed above and then close the app'
-    echo 'and then a Hearthstone installer will open separately for you to repeat the process except this time with Hearthstone. This is because, in order to have the best effect,'
-    echo 'Lutris uses per-game tweaking so you will technically have a separate Blizzard client for each game.'
-    printf 'Both games with appear in your Lutris library so treat Lutris as your client instead.\n\n'
+    if [[ "$lutris" -eq 1 ]]; then
+        echo 'IMPORTANT: READ THE BELOW TEXT BEFORE CONTINUING'
+        echo 'Please click through the Lutris installation menus.'
+        echo 'When the games launcher (e.g. Blizzard app) opens, sign in and install the game then close the app after finishing the installation of that game.'
+        echo 'NOTE: even if you chose to install multiple games from the same client - e.g. if you want to install Hearthstone and Overwatch which are both from the Blizzard app,'
+        echo 'do not install them in the same window. When it says "Installing Overwatch..." click through and install Overwatch as instructed above and then close the app'
+        echo 'and then a Hearthstone installer will open separately for you to repeat the process except this time with Hearthstone. This is because, in order to have the best effect,'
+        echo 'Lutris uses per-game tweaking so you will technically have a separate Blizzard client for each game.'
+        printf 'Both games with appear in your Lutris library so treat Lutris as your client instead.\n\n'
 
-    read -p 'Press ENTER when you are ready to continue or CTRL+C to cancel the script. '
-    echo 'Starting game installation(s)...'
-    game_scripts 'overwatch' 'Overwatch'
-    game_scripts 'hearthstone' 'Hearthstone'
-    game_scripts 'heroes-of-the-storm' 'Heroes of the Storm'
-    game_scripts 'magic-the-gathering-arena' 'Magic: The Gathering Arena'
-    game_scripts 'gwent' 'Gwent'
-    game_scripts 'osu' 'osu!'
+        read -p 'Press ENTER when you are ready to continue or CTRL+C to cancel the script. '
+        echo 'Starting game installation(s)...'
+        game_scripts 'overwatch' 'Overwatch'
+        game_scripts 'hearthstone' 'Hearthstone'
+        game_scripts 'heroes-of-the-storm' 'Heroes of the Storm'
+        game_scripts 'magic-the-gathering-arena' 'Magic: The Gathering Arena'
+        game_scripts 'gwent' 'Gwent'
+        game_scripts 'osu' 'osu!'
+    fi
 }
 
 [ "$parent_distro" = 'arch' ] && $aur_helper -Syu --noconfirm
@@ -452,8 +488,8 @@ case "$parent_distro" in
 
         check_installable
 
-        [ -n "$(grep 'steam' "$cache/to-install-arch")" ] && [[ "$proton_ge" -eq 1 ]] \
-        && echo 'protonup' >> "$cache/to-install-arch" && sed -i '/proton_ge/d' "$cache/uninstallable"
+        [ -n "$(grep 'steam' "$cache/to-install-arch")" ] && [[ "$protonup" -eq 1 ]] \
+        && echo 'protonup' >> "$cache/to-install-arch" && sed -i '/protonup/d' "$cache/uninstallable"
 
         drivers
         [[ "$wine" -eq 1 ]] && wine_install
@@ -477,7 +513,7 @@ case "$parent_distro" in
     'fedora')
         $root_cmd dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm -y
         $root_cmd dnf install https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm -y
-        $root_cmd check-update
+        $root_cmd dnf check-update
 
         check_installable
         drivers

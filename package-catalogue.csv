@@ -1,0 +1,60 @@
+APP NAME (in config file),PACKAGING METHODS SUPPORTED
+steam,Arch; Ubuntu; Fedora; flatpak
+lutris,Arch; Ubuntu (PPA); Fedora
+playonlinux,Arch; Ubuntu; Fedora
+legendary,Arch
+heroic,Arch; Ubuntu (deb) zap
+itch,Arch
+minigalaxy,Arch; Fedora; flatpak
+gamehub,Arch; Fedora; zap
+multimc,Arch; Ubuntu (deb)
+minecraft_launcher,Arch; Ubuntu (deb); snap
+veloren,Arch; Fedora (copr); flatpak; snap
+supertux,Arch; Ubuntu; Fedora; flatpak, snap, zap
+supertuxkart,Arch; Ubuntu; Fedora; flatpak, snap, zap
+extremetuxracer,Arch; Fedora; flatpak
+zero_ad,Arch; Ubuntu; snap; zap
+aisleriot,Arch; Ubuntu; Fedora; flatpak
+mahjongg,Arch; Ubuntu; Fedora; flatpak
+knights,Arch; Ubuntu; Fedora
+gnuchess,Arch; Ubuntu; Fedora
+mari_zero,Arch; Fedora; snap
+minetest,Arch; Ubuntu; flatpak, snap, zap
+teeworlds,Arch; Ubuntu snap; flatpak; Steam
+kapman,Arch; Ubuntu; Fedora; snap; flatpak
+xonotic,Arch; flatpak; snap; zap
+hedgewars,Arch; Ubuntu; flatpak
+openmw,Arch; Fedora; flatpak
+overwatch,Lutris
+hearthstone,Lutris
+heroes_of_the_storm,Lutris
+gwent,Lutris
+magic_the_gathering_arena,Lutris
+osu,Lutris
+protonup,Arch
+wine,Arch; Ubuntu; Fedora
+boxtron,Arch
+yuzu,Arch
+rpcs3,Arch
+flashpoint_infinity,Arch; Ubuntu (PPA); Fedora (copr)
+retroarch,Arch; Ubuntu; Fedora
+nvidia_proprietary,Arch; Ubuntu; Fedora
+amd,Arch; Ubuntu; Fedora
+intel,Arch; Ubuntu; Fedora
+mangohud,Arch; Ubuntu (PPA); Fedora
+replaysorcery,Arch
+goverlay,Arch; Fedora
+vkbasalt,Arch; Ubuntu (PPA)
+corectrl,Arch; Fedora
+noisetorch,Arch
+steamtinkerlaunch,Arch
+gamemode,Arch; Ubuntu; Fedora
+openrgb,Arch; zap
+piper,Arch; Fedora; flatpak
+livesplit,
+extra_libraries,Arch; Ubuntu; Fedora
+openbox,Arch; Fedora
+discord,Arch; Ubuntu (deb); Fedora; flatpak; snap; zap
+scarab,
+winetricks,Arch; Ubuntu; Fedora
+steam_rom_manager,zap
