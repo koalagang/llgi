@@ -34,7 +34,7 @@ osu,Lutris
 protonup,Arch
 wine,Arch; Ubuntu; Fedora
 boxtron,Arch
-yuzu,Arch
+yuzu,Arch; flatpak
 rpcs3,Arch
 flashpoint_infinity,Arch; Ubuntu (PPA); Fedora (copr)
 retroarch,Arch; Ubuntu; Fedora

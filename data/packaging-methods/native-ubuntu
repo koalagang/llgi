@@ -3,7 +3,7 @@ supertux,supertux
 supertuxkart,supertuxkart
 0ad,zero_ad
 aisleriot,aisleriot
-gnome-mahjongg,mahjongg
+gnome-mahjongg,gnome_mahjongg
 knights,knights
 gnuchess
 minetest,minetest
@@ -14,3 +14,5 @@ openmw,openmw
 retroarch,retroarch
 gamemode,gamemode
 libsdl2-dev,sdl2
+playonlinux,playonlinux
+winetricks,winetricks

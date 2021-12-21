@@ -7,7 +7,7 @@ supertux,supertux
 supertuxkart,supertuxkart
 extremetuxracer,extremetuxracer
 aisleriot,aisleriot
-gnome-mahjongg,mahjongg
+gnome-mahjongg,gnome_mahjongg
 knights,knights
 gnuchess,gnuchess
 mari0,mari_zero
@@ -21,3 +21,5 @@ SDL2,sdl2
 openbox,openbox
 discord,discord
 obs-studio,obs_studio
+playonlinux,playonlinux
+winetricks,winetricks

@@ -8,7 +8,7 @@ org.supertuxproject.SuperTux,supertux
 net.supertuxkart.SuperTuxKart,supertuxkart
 net.sourceforge.ExtremeTuxRacer,extremetuxracer
 org.gnome.Aisleriot,aisleriot
-org.gnome.Mahjongg,mahjongg
+org.gnome.Mahjongg,gnome_mahjongg
 net.minetest.Minetest,minetest
 com.teeworlds.Teeworlds,teeworlds
 org.kde.kapman,kapman
@@ -17,4 +17,5 @@ org.hedgewars.Hedgewars,hedgewars
 org.obsproject.Studio,obs
 org.freedesktop.Piper,piper
 org.libretro.RetroArch,retroarch
-net.veloren.airshipper,veloren
+net.veloren.airshipper,airshipper
+net.davidotek.pupgui2,protonup_qt

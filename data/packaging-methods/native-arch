@@ -15,7 +15,7 @@ supertuxkart,supertuxkart
 extremetuxracer,extremetuxracer
 0ad,zero_ad
 aisleriot,aisleriot
-gnome-mahjongg,mahjongg
+gnome-mahjongg,gnome_mahjongg
 knights,knights
 gnuchess,gnuchess
 mari0,mari_zero
@@ -25,7 +25,6 @@ kapman,kapman
 xonotic,xonotic
 hedgewars,hedgewars
 openmw,openmw
-boxtron,boxtron
 yuzu-mainline-bin,yuzu
 rpcs3-bin,rpcs3
 mangohud,mangohud
@@ -38,8 +37,8 @@ openrgb,openrgb
 piper,piper
 openbox,openbox
 discord,discord
-airshipper,veloren
-
-
-#####################
+airshipper,airshipper
 noisetorch-bin,noisetorch
+playonlinux,playonlinux
+winetricks,winetricks
+protonup-qt,protonup-qt

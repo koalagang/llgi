@@ -1,18 +1,6 @@
 #!/usr/bin/env bash
 
-printf "WARNING: just as you would with running any other script, you are hereby granting llgi permission to modify your system.\nBy continuing you accept that if your system breaks as a result of this, it is YOUR OWN RESPONSIBILITY.\n\n"
-while true; do
-    read -p 'Do you wish to continue? [y/N] ' yn
-    case "$yn" in
-        [Yy]* ) printf 'llgi: option entered: yes\nContinuing script.\n' && break ;;
-        [Nn]* ) printf 'llgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
-        '') printf 'llgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
-        * ) echo 'Please answer "yes" or "no".'
-    esac
-done
-
-
-# This directory is temporary. It will be moved to a more permanent spot in the future.
+# This directory is temporary. It will be moved to a more permanent spot at a later release (before llgi leaves alpha or beta).
 pack_mgr_dir="./data/packaging-methods"
 desktop_entries_dir="./data/desktop-entries"
 
@@ -59,6 +47,19 @@ while getopts 'vFASNa:dC:c:' OPT; do
   esac
 done
 
+# Just a warning to make sure that the user is fully aware that they are responsible for any breakages.
+printf "WARNING: just as you would with running any other script, you are hereby granting llgi permission to modify your system.\nBy continuing you accept that if your system breaks as a result of this, it is YOUR OWN RESPONSIBILITY.\nTIP: make regular backups of important files.\n\n"
+while true; do
+    read -p 'Do you wish to continue? [y/N] ' yn
+    case "$yn" in
+        [Yy]* ) printf 'llgi: option entered: yes\nContinuing script.\n' && break ;;
+        [Nn]* ) printf '\nllgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
+        '') printf '\nllgi: option entered: no\nScript cancelled.\n' && exit 0 ;;
+        * ) echo 'Please answer "yes" or "no".'
+    esac
+done
+
+
 # Set root access tool to sudo if '-d' flag has not been parsed
 [ -z "$root_cmd" ] && export root_cmd='sudo'
 [ -z "$config" ] && export config="$XDG_CONFIG_HOME/llgi" && mkdir -p "$config"
@@ -94,45 +95,31 @@ echo 'Upgrading packages...'
 [ "$parent_distro" = 'fedora' ] && $root_cmd upgrade --refresh -y
 
 # Dependency check
-deps=('git' 'wget' 'curl' 'unzip' 'tar')
+deps=('git' 'wget' 'curl' 'unzip' 'tar' 'make')
 echo "${deps[@]}" | sed 's/ /\n/g' | xargs -I% -n 1 sh -c 'command -v "%" >/dev/null || echo "error: missing dependency: %" | tee "/tmp/llgi-missing-deps"'
-[ -e '/tmp/llgi-missing-deps' ] && echo 'Installing missing llgi dependencies...' && rm '/tmp/llgi-missing-deps'
-case "$parent_distro" in
-    'arch') $root_cmd pacman -S "${deps[@]}" --needed --noconfirm ;;
-    'ubuntu') $root_cmd apt install "${deps[@]}" -y ;;
-    'fedora') $root_cmd dnf install "${deps[@]}" -y
-esac
+[ -e '/tmp/llgi-missing-deps' ] && echo 'Installing missing llgi dependencies...' && rm '/tmp/llgi-missing-deps' &&
+    case "$parent_distro" in
+        'arch') $root_cmd pacman -S "${deps[@]}" --needed --noconfirm ;;
+        'ubuntu') $root_cmd apt install "${deps[@]}" -y ;;
+        'fedora') $root_cmd dnf install "${deps[@]}" -y
+    esac
 
 bak (){; echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak ;}
 
-# software which requires special treatment
-# (can't simply be installed as a single package from the repos)
-# these are not included in the package lists
-# TODO: make this list more complete (consider looping through)
+# Source the config file because some software requires special treatment
+# (can't simply be installed as a single package from the repos).
+# These are not included in the package lists (native-arch, snap, flatpak, etc.).
 source "$config/llgi.conf"
-[ -n "$wine" ] && export wine
-[ -n "$protonup" ] && export protonup
-[ -n "$boxtron" ] && export boxtron
-[ -n "$heroic" ] && export heroic
-[ -n "$veloren" ] && export veloren
-[ -n "$overwatch" ] && export overwatch && export lutris=1
-[ -n "$hearthstone" ] && export hearthstone && export lutris=1
-[ -n "$heroes_of_the_storm" ] && export heroes_of_the_storm && export lutris=1
-[ -n "$magic_the_gathering_arena" ] && export magic_the_gathering_arena && export lutris=1
-[ -n "$gwent" ] && export gwent && export lutris=1
-[ -n "$osu" ] && export osu && export lutris=1
 
 wine_install (){
     printf '\nInstalling wine...\n'
     case "$parent_distro" in
-        'arch') # note that multilib must be enabled (is enabled earlier in the script)
-            $root_cmd pacman -S wine-staging giflib lib32-giflib libpng lib32-libpng libldap lib32-libldap gnutls lib32-gnutls \
+        'arch') $root_cmd pacman -S wine-staging giflib lib32-giflib libpng lib32-libpng libldap lib32-libldap gnutls lib32-gnutls \
                 mpg123 lib32-mpg123 openal lib32-openal v4l-utils lib32-v4l-utils libpulse lib32-libpulse libgpg-error \
                 lib32-libgpg-error alsa-plugins lib32-alsa-plugins alsa-lib lib32-alsa-lib libjpeg-turbo lib32-libjpeg-turbo \
                 sqlite lib32-sqlite libxcomposite lib32-libxcomposite libxinerama lib32-libgcrypt libgcrypt lib32-libxinerama \
                 ncurses lib32-ncurses opencl-icd-loader lib32-opencl-icd-loader libxslt lib32-libxslt libva lib32-libva gtk3 \
                 lib32-gtk3 gst-plugins-base-libs lib32-gst-plugins-base-libs vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm ;;
-                # note that 32-bit support must be enabled (is enabled earlier in the script)
         'ubuntu') $root_cmd apt install wine64 wine32 libasound2-plugins:i386 libsdl2-2.0-0:i386 libdbus-1-3:i386 libsqlite3-0:i386 -y ;;
         'fedora') $root_cmd dnf install wine -y
         esac
@@ -141,7 +128,7 @@ wine_install (){
 # drivers and vulkan
 drivers (){
     case "$parent_distro" in
-        'arch') # note that multilib must be enabled for this but it is already enabled before running the drivers function
+        'arch')
             if [ "$driver_vendor" = 'nvidia' ]; then
                 [ "$(uname -r)" =~ 'lts' ] || $root_cmd nvidia nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime \
                 vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
@@ -161,7 +148,6 @@ drivers (){
                 && $root_cmd apt install libgl1-mesa-dri:i386 mesa-vulkan-drivers mesa-vulkan-drivers:i386 -y
             fi ;;
         'fedora')
-            # note that RPM Fusion must be enabled for this but it is already enabled before running the drivers function
             if [ "$driver_vendor" = 'nvidia' ]; then
                 $root_cmd install akmod-nvidia vulkan-loader vulkan-loader.i686 -y
             else
@@ -175,15 +161,45 @@ libraries (){
         'arch') $root_cmd pacman -S sdl2 lib32-libbsd libbsd lib32-openal openal --noconfirm --needed ;;
         'ubuntu') $root_cmd apt install libsdl2-dev libbsd-dev libopenal-dev -y ;;
         'fedora') $root_cmd dnf install SDL2.i686 SDL2.x86_64 libbsd.i686 libbsd.x86_64 openal-soft.i686 openal.x84_64 -y
-    esac ;}
+    esac
+}
+
+steam_compatibility_tools (){
+    if [ -z "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
+        if [[ "$boxtron" -eq 1 ]]; then
+            case "$parent_distro" in
+                'arch') $aur_helper -S boxtron --noconfirm ;;
+                'ubuntu') $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y ;;
+                'fedora') $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
+            esac
+            [[ "$parent_distro" != 'arch' ]] &&
+                $root_cmd make -C "$cache/boxtron" install && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" && $root_cmd make -C "$cache/boxtron" install
+            sed -i '/boxtron/d' "$cache/uninstallable"
+        fi
+        if [[ "$protonup" -eq 1 ]]; then
+            case "$parent_distro" in
+                'arch') $aur_helper -S protonup-git --noconfirm ;;
+                'ubuntu') $root_cmd apt python3-pip -y &&
+                    echo "APT::Update::Post-Invoke {\"echo 'Checking for protonup updates...' && sudo pip install -U protonup >/dev/null 2>&1\";};" >> '/etc/apt/apt.conf' ;;
+                'fedora') $root_cmd dnf python3-pip # TODO: figure out how to add pip command to post-transaction script for dnf
+                [[ "$parent_distro" != 'arch' ]] && $root_cmd pip install protonup
+                mkdir -p "$HOME/.steam/root/compatibilitytools.d" && protonup -d "$HOME/.steam/root/compatibilitytools.d" &&
+                    echo 'Downloading the latest version of ProtonGE...' && protonup -y
+            esac
+        fi
+    elif [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
+            [[ "$protonup" -eq 1 ]] && echo 'com.valvesoftware.Steam.CompatibilityTool.Proton-GE' >> "$cache/to-install-flatpak"
+            [[ "$boxtron" -eq 1 ]] && echo 'com.valvesoftware.Steam.CompatibilityTool.Boxtron' >> "$cache/to-install-flatpak"
+    fi
+}
 
 # Mini functions
-# These are here to help me get less wet (write everything twice) and stay dry (don't repeat yourself) with the fallback function.
+# These are here to help me to stay dry (don't repeat yourself) with the fallback function.
 ppa_install (){; [[ "$2" -eq 1 ]] && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2" ;}
 deb_install (){; [[ "$2" -eq 1 ]] && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
 download_extract_tar (){; [[ "$2" -eq 1 ]] && wget -q --show-progress "$1" -O "$cache/$2.tar.gz" && tar xf "$cache/$2.tar.gz" -C "$cache" ;}
 install_zip (){
-    mkdir "$cache/$2"
+    mkdir -p "$cache/$2"
     wget -q --show-progress "$1" -O "$cache/$2/$2.zip"
     unzip "$cache/$2/$2.zip" -d "$cache/$2"
     rm "$cache/$2/$2.zip"
@@ -191,23 +207,29 @@ install_zip (){
     $root_cmd cp "$desktop_entries_dir/$2/$2.desktop" '/usr/share/applications'
     $root_cmd mkdir -p "/usr/share/icons/$2" && $root_cmd cp "$desktop_entries/$2/$2-icon.png" "/usr/share/icons/$2"
 }
-steam_compatibility_tools (){
-    if [ -z "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
-        if [[ "$boxtron" -eq 1 ]]; then
-            case "$parent_distro" in
-                'ubuntu') $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y ;;
-                'fedora') $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
-            esac
-            $root_cmd make -C "$cache/boxtron" install && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" && $root_cmd make -C "$cache/boxtron" install
-        fi
-        [[ "$protonup" -eq 1 ]] && git clone 'https://github.com/AUNaseef/protonup.git' protonup_install && sh -c "cd $cache/protonup_install && $root_cmd python3 setup.py install"
-    elif [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
-            [[ "$protonup" -eq 1 ]] && echo 'com.valvesoftware.Steam.CompatibilityTool.Proton-GE' >> "$cache/to-install-flatpak"
-            echo 'com.valvesoftware.Steam.CompatibilityTool.Boxtron' >> "$cache/to-install-flatpak"
-        fi
-    fi
-    [[ "$boxtron" -eq 1 ]] && sed -i '/boxtron/d' "$cache/uninstallable"
-    [[ "$protonup" -eq 1 ]] && sed -i '/protonup/d' "$cache/uninstallable"
+steamtinkerlaunch_install (){
+    # Install dependencies of yad, as well as tools required to compile yad.
+    case "$parent_distro" in
+        'ubuntu') $root_cmd apt install xdotool automake libtool libglib2.0-dev intltool libgtksourceview-3.0-dev libwebkit2gtk-4.0-dev libgspell-1-dev -y ;;
+        'fedora') $root_cmd dnf install xdotool xprop xrandr automake libtool glib2 intltool gtksourceview3 webkit2gtk3 gspell -y
+    esac
+
+    # Yad must be compiled because steamtinkerlaunch requires a version >= 7.2 but Fedora and Ubuntu package older releases
+    # Fortunately yad is a very small program so it is quick to compile.
+    echo 'Preparing to compile yad...'
+    # xxd is a component of vim which steamtinkerlaunch depends on
+    git clone 'https://github.com/v1cont/yad.git' "$cache/yad" && sh -c "cd $cache/yad
+    libtoolize --copy --force
+    autoreconf
+    automake --force-missing --add-missing
+    intltoolize
+    ./configure --prefix=/usr --enable-html --enable-icon-browser --enable-gio --enable-spell --enable-sourceview
+    echo 'Compiling yad...'
+    make
+    $root_cmd make install"
+    git clone 'https://github.com/vim/vim.git' "$cache/vim" && make -C "$cache/vim/src/xxd" && sudo mv "$cache/vim/src/xxd/xxd" '/usr/bin'
+    git clone 'https://github.com/frostworx/steamtinkerlaunch.git' "$cache/steamtinkerlaunch"
+    $root_cmd make install -C "$cache/steamtinkerlaunch"
 }
 
 # fallback methods for installing packages if they are not available in native, flatpak, snap or appimage form
@@ -220,14 +242,11 @@ fallback (){
             ppa_install 'lutris-team/lutris' 'lutris'
             ppa_install 'frinsky/airshipper' 'airshipper'
             ppa_install 'ernstp/mesarc' 'corectrl'
-            ppa_install 'obsproject/obs-studio' 'ob-studio' && ppa_pkgs="$ppa_pkgs ffmpeg v4l2loopback-dkms "
-            if [[ "$goverlay" -eq 1 ]]; then
-                $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y
-            elif [[ "$mangohud" -eq 1 ]]; then
-                $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y
-            elif [[ "$vkbasalt" -eq 1 ]]; then
-                $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y
-            fi
+            ppa_install 'obsproject/obs-studio' 'obs-studio' && ppa_pkgs="$ppa_pkgs ffmpeg v4l2loopback-dkms "
+            # 'ppa:flexiondotorg/mangohud' contains goverlay, mangohud and vkbasalt
+            if [[ "$goverlay" -eq 1 ]]; then; $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y ;
+            elif [[ "$mangohud" -eq 1 ]]; then; $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y ;
+            elif [[ "$vkbasalt" -eq 1 ]]; then; $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y ; fi
             # These were not included in the above if statement because then only one would run,
             # so, by doing it this way, then if multiple are enabled then all can be run
             [[ "$goverlay" -eq 1 ]] && ppa_pkgs="$ppa_pkgs goverlay"
@@ -240,8 +259,9 @@ fallback (){
             deb_install 'https://github.com/sharkwouter/minigalaxy/releases/download/1.1.0/minigalaxy_1.1.0_all.deb' 'minigalaxy'
             deb_install 'https://launcher.mojang.com/download/Minecraft.deb' 'minecraft'
             deb_install 'https://files.multimc.org/downloads/multimc_1.6-1.deb' 'multimc'
+            deb_install 'https://github.com/derrod/legendary/releases/download/0.20.21/python3-legendary-gl_0.20.21-1_all.deb' 'legendary'
 
-            # In some of the below statements, using 'if' is not strictly necessary but I chose to use them because otherwise I would require a lot of '&&' signs
+            # In some of the below statements, using 'if' is not strictly necessary but I chose to use them because otherwise I would require many '&&'
             # Flashpoint Infinity
             if [[ "$flashpoint_infinity" -eq 1 ]]; then
                 wget -q --show-progress 'https://bluepload.unstable.life/flashpoint-infinity-8-2-2-amd64-deb.7z' -O "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z"
@@ -272,11 +292,19 @@ fallback (){
             # Flashpoint Infinity
             [[ "$flashpoint_infinity" -eq 1 ]] && $root_cmd dnf copr enable heartsdo/flashpoint-infinity -y && $root_cmd dnf install flashpoint-infinity -y
 
-            # Veloren
-            [[ "$veloren" -eq 1 ]] && $root_cmd dnf copr enable frinksy/airshipper -y && $root_cmd dnf install airshipper -y
+            # airshipper
+            [[ "$airshipper" -eq 1 ]] && $root_cmd dnf copr enable frinksy/airshipper -y && $root_cmd dnf install airshipper -y
+
+
+            # Legendary
+            [[ "$legendary" -eq 1 ]] && $root_cmd dnf install python3-pip -y && $root_cmd pip install legendary-gl
+
+            # Steamtinkerlaunch
+            steamtinkerlaunch_install
     esac
 
     # rpcs3
+    # TODO (?): use zap to install rpcs3 and other app images which aren't on Get Appimages or Appimage Store
     if [[ "$rpcs3" -eq 1 ]]; then
         sh -c "cd $cache && curl -JLO 'https://rpcs3.net/latest-appimage'"
         $root_cmd chmod a+x "$cache"/rpcs3-*_linux64.AppImage
@@ -310,8 +338,6 @@ fallback (){
         sh -c "cd $cache && ./itch-setup"
         killall 'itch'
     fi
-
-    steam_compatibility_tools
 }
 
 check_installable (){
@@ -384,7 +410,7 @@ agnostic_installing (){
     if [[ "$pkg_prefs" =~ 'flatpak' ]]; then
         [ -z "$(command -v 'flatpak')" ] && \
         case "$parent_distro" in
-            'arch') $root_cmd pacman -S flatpak --noconfirm ;;
+            'arch') $root_cmd pacman -S flatpak --needed --noconfirm ;;
             'ubuntu') $root_cmd add-apt-repository ppa:flatpak/stable && $root_cmd apt update && $root_cmd apt install flatpak -y ;;
             'fedora') $root_cmd dnf install flatpak -y
         esac
@@ -402,7 +428,7 @@ agnostic_installing (){
         esac
         printf '\nInstalling snap packages...\n'
         $root_cmd snap refresh
-        [ -n "$(grep -i 'veloren' "$cache/to-install-snap")" ] && sed -i '/veloren/d' "$cache/to-install-snap" && $root_cmd snap install veloren --beta
+        [ -n "$(grep -i 'airshipper' "$cache/to-install-snap")" ] && sed -i '/airshipper/d' "$cache/to-install-snap" && $root_cmd snap install airshipper --beta
         readarray -t pkg_list < "$cache/to-install-snap" && $root_cmd snap install "${pkg_list[@]}"
     fi
 
@@ -472,7 +498,7 @@ case "$parent_distro" in
         read -p 'Do you wish to enable parallel downloads? [y/n] ' yn
         case "$yn" in
             [Yy]*) echo '[Recommended: 20 for those with fast internet speeds, 5-10 for those with slow internet speeds]'
-                read -p 'How many parallel downloads would you like? ' parallel && $root_cmd sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $parallel/" /etc/pacman.conf
+                read -p 'How many parallel downloads would you like? ' parallel && $root_cmd sed -i "s/#ParallelDownloads = 5/ParallelDownloads = $parallel/" '/etc/pacman.conf'
                 break ;;
             [Nn]*) break ;;
             * ) echo 'Please answer "yes" or "no".'
@@ -480,22 +506,25 @@ case "$parent_distro" in
         done
 
         # enable multilib repository
-        [ "$distro" != 'Artix' ] &&
-            [ "$(grep -w '\[multilib\]' /etc/pacman.conf)" = '#[multilib]' ] && sed -i 's/#[multilib]/[multilib]/' /etc/pacman.conf
+        if [ "$distro" != 'Artix' ]; then
+            [ "$(grep -w '\[multilib\]' /etc/pacman.conf)" = '#[multilib]' ] && sed -i 's/#[multilib]/[multilib]/' '/etc/pacman.conf'
             [ "$(grep -wA1 '\[multilib\]' /etc/pacman.conf | tail -1)" = '#Include = /etc/pacman.d/mirrorlist' ] &&
-                grep -nwA1 '\[multilib\]' /etc/pacman.conf | tail -1 | cut -d'-' -f1 | $root_cmd xargs -I% sed -i '%s/#//' /etc/pacman.conf
+            grep -nwA1 '\[multilib\]' '/etc/pacman.conf' | tail -1 | cut -d'-' -f1 | $root_cmd xargs -I% sed -i '%s/#//' '/etc/pacman.conf'
             $root_cmd pacman -Syy --noconfirm
+        fi
 
         check_installable
-
-        [ -n "$(grep 'steam' "$cache/to-install-arch")" ] && [[ "$protonup" -eq 1 ]] \
-        && echo 'protonup' >> "$cache/to-install-arch" && sed -i '/protonup/d' "$cache/uninstallable"
 
         drivers
         [[ "$wine" -eq 1 ]] && wine_install
         [[ "$extra_libraries" -eq 1 ]] && libraries
+        # steamtinkerlaunch depends on xxd (a component of vim)
+        [[ "$steamtinkerlaunch" -eq 1 ]] && [ -z "$(command -v vim)" ] && echo 'xxd-standalone' >> "$cache/to-install-native-arch"
+        # Some retroarch data files which don't come with the retroarch package
+        [[ "$retroarch" -eq 1 ]] && echo 'retroarch-assets-glui retroarch-assets-ozone retroarch-assets-xmb' >> "$cache/to-install-arch"
         [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-arch" && \
         $aur_helper -S "${pkg_list[@]}" --noconfirm --needed
+        steam_compatibility_tools
         agnostic_installing ;;
     'ubuntu')
         $root_cmd add-apt-repository multiverse
@@ -509,22 +538,25 @@ case "$parent_distro" in
         [[ "$extra_libraries" -eq 1 ]] && libraries
         [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-ubuntu" && \
         $root_cmd apt install "${pkg_list[@]}" -y
+        steam_compatibility_tools
         agnostic_installing ;;
     'fedora')
-        $root_cmd dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm -y
-        $root_cmd dnf install https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm -y
+        $root_cmd dnf install "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" -y
+        $root_cmd dnf install "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" -y
         $root_cmd dnf check-update
 
         check_installable
         drivers
         [[ "$wine" -eq 1 ]] && wine_install
         [[ "$extra_libraries" -eq 1 ]] && libraries
-        [[ "$obs_studio" -eq 1 ]] && [[ "$nvidia" -eq 1 ]] && echo 'xorg-x11-drv-nvidia-cuda' >> "$cache/to-install-native-fedora"
+        [[ "$obs_studio" -eq 1 ]] && [[ "$nvidia_proprietary" -eq 1 ]] && echo 'xorg-x11-drv-nvidia-cuda' >> "$cache/to-install-native-fedora"
+        # Some retroarch data files which don't come with the retroarch package
+        [[ "$retroarch" -eq 1 ]] && echo 'retroarch-freeworld retroarch-freeworld-database retroarch-freeworld-filters' >> "$cache/to-install-arch"
         [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-fedora" && \
         $root_cmd dnf install "${pkg_list[@]}" -y
         agnostic_installing ;;
 esac
 
+$root_cmd rm -rf "$cache"/* # clear the cache
 [ -n "$(<$cache/uninstallable)" ] && echo 'llgi: error: the following packages could not be installed:' && cat "$cache/uninstallable"
-$root_cmd rm -r "$cache"/*
 printf '\nllgi: installation complete\nPlease reboot your system for the installation to take full affect.\n'
