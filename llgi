@@ -127,13 +127,26 @@ wine_install (){
 
 # drivers and vulkan
 drivers (){
+    [[ "$nvidia_495" -eq 1 ]] && driver_vendor='nvidia'
+    [[ "$nvidia_390" -eq 1 ]] && driver_vendor='nvidia'
+    [[ "$nvidia_340" -eq 1 ]] && driver_vendor='nvidia'
+    [[ "$amd" -eq 1 ]] && driver_vendor='amd'
+    [[ "$intel" -eq 1 ]] && driver_vendor='intel'
     case "$parent_distro" in
         'arch')
             if [ "$driver_vendor" = 'nvidia' ]; then
-                [ "$(uname -r)" =~ 'lts' ] || $root_cmd nvidia nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime \
-                vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
-                [ "$(uname -r)" =~ 'lts' ] && $root_cmd nvidia-lts nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime \
-                vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
+                [ "$(uname -r)" =~ 'lts' ] && kernel='lts'
+                if [[ "$nvidia_495" -eq 1 ]]; then
+                    [ "$kernel" = 'lts' ] && nvidia_pkgs='nvidia-lts'
+                    [ "$kernel" != 'lts' ] && nvidia_pkgs='nvidia'
+                    nvidia_pkgs="$nvidia_pkgs nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime"
+                elif [[ "$nvidia_390" -eq 1 ]]; then
+                    nvidia_pkgs='nvidia-390xx nvidia-390xx-dkms nvidia-390xx-utils lib32-nvidia-390xx-utils nvidia-390xx-settings'
+                elif [[ "$nvidia_340" -eq 1 ]]; then
+                    [ "$kernel" = 'lts' ] && nvidia_pkgs='nvidia-340xx nvidia-340xx-lts-dkms nvidia-340xx-utils lib32-nvidia-340xx-utils nvidia-340xx-settings'
+                    [ "$kernel" != 'lts' ] && nvidia_pkgs='nvidia-340xx nvidia-340xx-dkms nvidia-340xx-utils lib32-nvidia-340xx-utils nvidia-340xx-settings'
+                fi
+                $root_cmd pacman -S "$nvidia_pkgs" vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
             elif [ "$driver_vendor" = 'amd' ]; then
                 $root_cmd pacman -S lib32-mesa vulkan-radeon lib32-vulkan-radeon vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm
             elif [ "$driver_vendor" = 'intel' ]; then
@@ -141,15 +154,21 @@ drivers (){
             fi ;;
         'ubuntu')
             if [ "$driver_vendor" = 'nvidia' ]; then
-                $root_cmd add-apt-repository ppa:graphics-drivers/ppa && $root_cmd dpkg --add-architecture i386 && $root_cmd apt update && $root_cmd upgrade \
-                && $root_cmd apt install nvidia-driver-495 libvulkan1 libvulkan1:i386 -y
+                $root_cmd add-apt-repository ppa:graphics-drivers/ppa -y && $root_cmd apt update
+                [[ "$nvidia_495" -eq 1 ]] && $root_cmd apt install nvidia-driver-495 libvulkan1 libvulkan1:i386 -y
+                [[ "$nvidia_390" -eq 1 ]] && $root_cmd apt install nvidia-driver-390 libvulkan1 libvulkan1:i386 -y
+                [[ "$nvidia_340" -eq 1 ]] && $root_cmd apt install nvidia-340 libvulkan1 libvulkan1:i386 -y
             else
-                $root_cmd add-apt-repository ppa:kisak/kisak-mesa && $root_cmd dpkg --add-architecture i386 && $root_cmd apt update && $root_cmd apt upgrade \
+                $root_cmd add-apt-repository ppa:kisak/kisak-mesa -y && $root_cmd dpkg --add-architecture i386 && $root_cmd apt update && $root_cmd apt upgrade \
                 && $root_cmd apt install libgl1-mesa-dri:i386 mesa-vulkan-drivers mesa-vulkan-drivers:i386 -y
             fi ;;
         'fedora')
             if [ "$driver_vendor" = 'nvidia' ]; then
-                $root_cmd install akmod-nvidia vulkan-loader vulkan-loader.i686 -y
+                [[ "$nvidia_495" -eq 1 ]] && nvidia_pkg='akmod-nvidia'
+                [[ "$nvidia_390" -eq 1 ]] && nvidia_pkg='xorg-x11-drv-nvidia-390xx akmod-nvidia-390xx'
+                [[ "$nvidia_340" -eq 1 ]] && nvidia_pkg='xorg-x11-drv-nvidia-340xx akmod-nvidia-340xx'
+                $root_cmd dnf config-manager --set-enabled rpmfusion-nonfree-nvidia-driver
+                $root_cmd install "$nvidia_pkg" vulkan-loader vulkan-loader.i686 -y
             else
                 $root_cmd dnf install vulkan-loader vulkan-loader.i686 -y
             fi
@@ -398,7 +417,7 @@ game_scripts (){
     if [ -z "$(command -v lutris)" ]; then
         case "$parent_distro" in
             'arch') $root_cmd pacman -S lutris --needed --noconfirm ;;
-            'ubuntu') $root_cmd add-apt-repository ppa:lutris-team/lutris && $root_cmd apt update && $root_cmd apt install lutris -y ;;
+            'ubuntu') $root_cmd add-apt-repository ppa:lutris-team/lutris -y && $root_cmd apt update && $root_cmd apt install lutris -y ;;
             'fedora') $root_cmd dnf install lutris -y
         esac
     fi
@@ -411,7 +430,7 @@ agnostic_installing (){
         [ -z "$(command -v 'flatpak')" ] && \
         case "$parent_distro" in
             'arch') $root_cmd pacman -S flatpak --needed --noconfirm ;;
-            'ubuntu') $root_cmd add-apt-repository ppa:flatpak/stable && $root_cmd apt update && $root_cmd apt install flatpak -y ;;
+            'ubuntu') $root_cmd add-apt-repository ppa:flatpak/stable -y && $root_cmd apt update && $root_cmd apt install flatpak -y ;;
             'fedora') $root_cmd dnf install flatpak -y
         esac
         flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
@@ -527,7 +546,7 @@ case "$parent_distro" in
         steam_compatibility_tools
         agnostic_installing ;;
     'ubuntu')
-        $root_cmd add-apt-repository multiverse
+        $root_cmd add-apt-repository multiverse -y
         $root_cmd dpkg --add-architecture i386
         $root_cmd update
 
@@ -541,8 +560,9 @@ case "$parent_distro" in
         steam_compatibility_tools
         agnostic_installing ;;
     'fedora')
-        $root_cmd dnf install "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" -y
-        $root_cmd dnf install "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" -y
+        $root_cmd dnf install fedora-workstation-repositories \
+            "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+            "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" -y
         $root_cmd dnf check-update
 
         check_installable
