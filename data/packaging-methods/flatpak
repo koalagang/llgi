@@ -19,3 +19,5 @@ org.freedesktop.Piper,piper
 org.libretro.RetroArch,retroarch
 net.veloren.airshipper,airshipper
 net.davidotek.pupgui2,protonup_qt
+com.valvesoftware.Steam.CompatibilityTool.Proton-GE,protonge_flatpak
+com.valvesoftware.Steam.CompatibilityTool.Boxtron,boxtron_flatpak

@@ -4,3 +4,4 @@ Exec=/usr/lib/MultiMC/MultiMC
 Terminal=false
 Type=Application
 Icon=/usr/share/icon/MultiMC/multimc-icon.png
+Categories=Game

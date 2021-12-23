@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=ProtonUp-Qt
+Exec=protonup-qt
+Terminal=false
+Type=Application
+Icon=net.davidotek.pupgui2
+Categories=Game;Utility;

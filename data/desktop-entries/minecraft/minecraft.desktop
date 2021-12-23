@@ -4,3 +4,4 @@ Exec=/usr/bin/minecraft-launcher
 Terminal=false
 Type=Application
 Icon=/usr/share/icons/minecraft/minecraft-icon.png
+Categories=Game

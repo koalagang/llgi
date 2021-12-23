@@ -17,7 +17,6 @@ goverlay,goverlay
 corectrl,corectrl
 gamemode,gamemode
 piper,piper
-SDL2,sdl2
 openbox,openbox
 discord,discord
 obs-studio,obs_studio

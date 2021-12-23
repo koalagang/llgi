@@ -92,7 +92,7 @@ echo "Distributon detected as $distro."
 echo 'Upgrading packages...'
 [ "$parent_distro" = 'arch' ] && $aur_helper -Syu --noconfirm
 [ "$parent_distro" = 'ubuntu' ] && $root_cmd apt update && $root_cmd apt upgrade -y
-[ "$parent_distro" = 'fedora' ] && $root_cmd upgrade --refresh -y
+[ "$parent_distro" = 'fedora' ] && $root_cmd dnf upgrade --refresh -y
 
 # Dependency check
 deps=('git' 'wget' 'curl' 'unzip' 'tar' 'make')
@@ -159,8 +159,8 @@ drivers (){
                 [[ "$nvidia_390" -eq 1 ]] && $root_cmd apt install nvidia-driver-390 libvulkan1 libvulkan1:i386 -y
                 [[ "$nvidia_340" -eq 1 ]] && $root_cmd apt install nvidia-340 libvulkan1 libvulkan1:i386 -y
             else
-                $root_cmd add-apt-repository ppa:kisak/kisak-mesa -y && $root_cmd dpkg --add-architecture i386 && $root_cmd apt update && $root_cmd apt upgrade \
-                && $root_cmd apt install libgl1-mesa-dri:i386 mesa-vulkan-drivers mesa-vulkan-drivers:i386 -y
+                $root_cmd add-apt-repository ppa:kisak/kisak-mesa -y && $root_cmd apt update &&
+                    $root_cmd apt install libgl1-mesa-dri:i386 mesa-vulkan-drivers mesa-vulkan-drivers:i386 -y
             fi ;;
         'fedora')
             if [ "$driver_vendor" = 'nvidia' ]; then
@@ -184,31 +184,55 @@ libraries (){
 }
 
 steam_compatibility_tools (){
-    if [ -z "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
-        if [[ "$boxtron" -eq 1 ]]; then
-            case "$parent_distro" in
-                'arch') $aur_helper -S boxtron --noconfirm ;;
-                'ubuntu') $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y ;;
-                'fedora') $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
-            esac
-            [[ "$parent_distro" != 'arch' ]] &&
-                $root_cmd make -C "$cache/boxtron" install && git clone 'https://github.com/dreamer/boxtron.git' "$cache/boxtron" && $root_cmd make -C "$cache/boxtron" install
-            sed -i '/boxtron/d' "$cache/uninstallable"
-        fi
-        if [[ "$protonup" -eq 1 ]]; then
-            case "$parent_distro" in
-                'arch') $aur_helper -S protonup-git --noconfirm ;;
-                'ubuntu') $root_cmd apt python3-pip -y &&
-                    echo "APT::Update::Post-Invoke {\"echo 'Checking for protonup updates...' && sudo pip install -U protonup >/dev/null 2>&1\";};" >> '/etc/apt/apt.conf' ;;
-                'fedora') $root_cmd dnf python3-pip # TODO: figure out how to add pip command to post-transaction script for dnf
-                [[ "$parent_distro" != 'arch' ]] && $root_cmd pip install protonup
-                mkdir -p "$HOME/.steam/root/compatibilitytools.d" && protonup -d "$HOME/.steam/root/compatibilitytools.d" &&
-                    echo 'Downloading the latest version of ProtonGE...' && protonup -y
-            esac
-        fi
-    elif [ -n "$(grep 'Steam' "$cache/to-install-flatpak")" ]; then
-            [[ "$protonup" -eq 1 ]] && echo 'com.valvesoftware.Steam.CompatibilityTool.Proton-GE' >> "$cache/to-install-flatpak"
-            [[ "$boxtron" -eq 1 ]] && echo 'com.valvesoftware.Steam.CompatibilityTool.Boxtron' >> "$cache/to-install-flatpak"
+    if [[ "$boxtron" -eq 1 ]]; then
+        case "$parent_distro" in
+            'ubuntu') $root_cmd apt install dosobox inotify-tools timidity fluid-soundfont-gm -y ;;
+            'fedora') $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
+        esac
+        curl -sL 'https://github.com/dreamer/boxtron/releases/download/v0.5.4/boxtron.tar.xz' -O "$cache/boxtron.tar.xz"
+        tar xJf "$cache/boxtron.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
+    fi
+
+    if [[ "$protonup" -eq 1 ]]; then
+        case "$parent_distro" in
+            'ubuntu') $root_cmd apt install python3-pip -y ;;
+            'fedora') $root_cmd dnf install python3-pip -y
+        esac
+        pip install protonup
+        mkdir -p "$HOME/.steam/root/compatibilitytools.d" && protonup -d "$HOME/.steam/root/compatibilitytools.d"
+        echo 'Downloading the latest version of ProtonGE...' && protonup -y
+        sed -i '/protonup/d' "$cache/uninstallable"
+    fi
+
+    if [[ "$luxtorpeda" -eq 1 ]]; then
+        case "$parent_distro" in
+            'ubuntu') $root_cmd apt install libssl-dev -y ;;
+            'fedora') $root_cmd dnf install openssl-devel
+        esac
+        git clone 'https://github.com/luxtorpeda-dev/luxtorpeda.git' "$cache/luxtorpeda"
+        make -C "$cache/luxtorpeda" user-install
+        sed -i '/luxtorpeda/d' "$cache/uninstallable"
+    fi
+
+    if [[ "$roberta" -eq 1 ]]; then
+        case "$parent_distro" in
+            # Roberta is not available on the AUR
+            'arch') $root_cmd pacman -S scummvm inotifytools --noconfirm --needed ;;
+            'ubuntu') $root_cmd apt install scummvm inotifytools -y ;;
+            'fedora') $root_cmd dnf install scummvm inotifytools -y
+        esac
+        curl -sL 'https://github.com/dreamer/roberta/releases/download/v0.1.0/roberta.tar.xz' -O "$cache/roberta.tar.xz"
+        tar xJf "$cache/roberta.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
+        sed -i '/roberta/d' "$cache/uninstallable"
+    fi
+
+    # Protonup-qt
+    if [[ "$protonup_qt" -eq 1 ]]; then
+        wget 'https://github.com/DavidoTek/ProtonUp-Qt/releases/download/v2.4.1/ProtonUp-Qt-2.4.1-x86_64.AppImage' -O "$cache/protonup-qt"
+        $root_cmd chmod a+x "$cache/protonup-qt"
+        $root_cmd mv "$cache/protonup-qt" '/usr/bin/protonup-qt'
+        $root_cmd cp "$desktop_entries_dir/protonup-qt/protonup-qt.desktop" '/usr/share/applications'
+        $root_cmd cp -r "$desktop_entries_dir/protonup-qt/icons" '/usr/share'
     fi
 }
 
@@ -289,7 +313,22 @@ fallback (){
             fi
 
             # Install the ppa packages, along with any missing dependencies of the deb packages
-            $root_cmd apt update && $root_cmd apt -f install -y && $root_cmd install "$ppa_pkgs" -y ;;
+            $root_cmd apt update && $root_cmd apt -f install -y && $root_cmd install "$ppa_pkgs" -y
+
+            # Protonup
+            if [[ "$protonup" -eq 1 ]]; then
+                $root_cmd apt install python3-pip -y
+                echo "APT::Update::Post-Invoke {\"echo 'Checking for protonup updates...' && $root_cmd pip install -U protonup >/dev/null 2>&1\";};" >> '/etc/apt/apt.conf'
+                mkdir -p "$HOME/.steam/root/compatibilitytools.d" && protonup -d "$HOME/.steam/root/compatibilitytools.d"
+                echo 'Downloading the latest version of ProtonGE...' && protonup -y
+            fi
+
+            if [[ "$boxtron" -eq 1 ]]; then
+                $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y
+                curl -sL 'https://github.com/dreamer/boxtron/releases/download/v0.5.4/boxtron.tar.xz' -O "$cache/boxtron.tar.xz"
+                tar xJf "$cache/boxtron.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
+            fi
+            ;;
         'fedora')
             # Minecraft
             if [[ "$minecraft_launcher" -eq 1 ]]; then
@@ -311,15 +350,15 @@ fallback (){
             # Flashpoint Infinity
             [[ "$flashpoint_infinity" -eq 1 ]] && $root_cmd dnf copr enable heartsdo/flashpoint-infinity -y && $root_cmd dnf install flashpoint-infinity -y
 
-            # airshipper
+            # Airshipper
             [[ "$airshipper" -eq 1 ]] && $root_cmd dnf copr enable frinksy/airshipper -y && $root_cmd dnf install airshipper -y
-
 
             # Legendary
             [[ "$legendary" -eq 1 ]] && $root_cmd dnf install python3-pip -y && $root_cmd pip install legendary-gl
 
             # Steamtinkerlaunch
             steamtinkerlaunch_install
+            ;;
     esac
 
     # rpcs3
@@ -368,7 +407,7 @@ check_installable (){
         sort "$cache/to-install-$pref-temp" | uniq -d > "$cache/to-install-$pref"
     done
 
-    # remov packages in common which have a lower priority
+    # remove packages in common which have a lower priority
     # e.g. if the order of priority (descending) is snap, flatpak, zap:
     # if flatpak contains anything which is also in snap, remove it from flatpak
     # if zap contains anything which is in either snap or flatpak, remove it from zap
@@ -483,6 +522,7 @@ agnostic_installing (){
         game_scripts 'magic-the-gathering-arena' 'Magic: The Gathering Arena'
         game_scripts 'gwent' 'Gwent'
         game_scripts 'osu' 'osu!'
+        game_scripts 'twitch-app' 'Twitch Launcher'
     fi
 }
 
@@ -508,6 +548,13 @@ if [ "$distro" = 'Artix Linux' ]; then
     # TODO: add an echo command for every process (e.g. Updating..., Beginnning installation..., etc.)
 fi
 
+
+
+check_installable
+drivers
+[[ "$wine" -eq 1 ]] && wine_install && sed -i '/wine/d' "$cache/uninstallable"
+[[ "$extra_libraries" -eq 1 ]] && libraries && sed -i '/extra_libraries/d' "$cache/uninstallable"
+[[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-$parent_distro"
 case "$parent_distro" in
     'arch')
         bak '/etc/pacman.conf'
@@ -532,50 +579,75 @@ case "$parent_distro" in
             $root_cmd pacman -Syy --noconfirm
         fi
 
-        check_installable
-
-        drivers
-        [[ "$wine" -eq 1 ]] && wine_install
-        [[ "$extra_libraries" -eq 1 ]] && libraries
-        # steamtinkerlaunch depends on xxd (a component of vim)
-        [[ "$steamtinkerlaunch" -eq 1 ]] && [ -z "$(command -v vim)" ] && echo 'xxd-standalone' >> "$cache/to-install-native-arch"
-        # Some retroarch data files which don't come with the retroarch package
-        [[ "$retroarch" -eq 1 ]] && echo 'retroarch-assets-glui retroarch-assets-ozone retroarch-assets-xmb' >> "$cache/to-install-arch"
-        [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-arch" && \
-        $aur_helper -S "${pkg_list[@]}" --noconfirm --needed
-        steam_compatibility_tools
-        agnostic_installing ;;
+        $aur_helper -S "${pkg_list[@]}" --noconfirm --needed ;;
     'ubuntu')
         $root_cmd add-apt-repository multiverse -y
         $root_cmd dpkg --add-architecture i386
         $root_cmd update
-
-        check_installable
-
-        drivers
-        [[ "$wine" -eq 1 ]] && wine_install
-        [[ "$extra_libraries" -eq 1 ]] && libraries
-        [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-ubuntu" && \
-        $root_cmd apt install "${pkg_list[@]}" -y
-        steam_compatibility_tools
-        agnostic_installing ;;
+        $root_cmd apt install "${pkg_list[@]}" -y ;;
     'fedora')
         $root_cmd dnf install fedora-workstation-repositories \
-            "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
-            "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" -y
+        "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+        "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" -y
         $root_cmd dnf check-update
-
-        check_installable
-        drivers
-        [[ "$wine" -eq 1 ]] && wine_install
-        [[ "$extra_libraries" -eq 1 ]] && libraries
-        [[ "$obs_studio" -eq 1 ]] && [[ "$nvidia_proprietary" -eq 1 ]] && echo 'xorg-x11-drv-nvidia-cuda' >> "$cache/to-install-native-fedora"
-        # Some retroarch data files which don't come with the retroarch package
-        [[ "$retroarch" -eq 1 ]] && echo 'retroarch-freeworld retroarch-freeworld-database retroarch-freeworld-filters' >> "$cache/to-install-arch"
-        [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-fedora" && \
         $root_cmd dnf install "${pkg_list[@]}" -y
-        agnostic_installing ;;
 esac
+agnostic_installing
+fallback
+steam_compatibility_tools
+
+#case "$parent_distro" in
+#    'arch')
+#        #check_installable
+#
+#        #drivers
+#        #[[ "$wine" -eq 1 ]] && wine_install
+#        #[[ "$extra_libraries" -eq 1 ]] && libraries
+#        # steamtinkerlaunch depends on xxd (a component of vim)
+#        [[ "$steamtinkerlaunch" -eq 1 ]] && [ -z "$(command -v vim)" ] && echo 'xxd-standalone' >> "$cache/to-install-native-arch"
+#        # Some retroarch data files which don't come with the retroarch package
+#        [[ "$retroarch" -eq 1 ]] && printf '\nretroarch-assets-glui\nretroarch-assets-ozone\nretroarch-assets-xmb' >> "$cache/to-install-arch"
+#        all ;;
+#        #[[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-arch" && \
+#        #$aur_helper -S "${pkg_list[@]}" --noconfirm --needed
+#        #steam_compatibility_tools
+#        #agnostic_installing ;;
+#    'ubuntu')
+#        $root_cmd add-apt-repository multiverse -y
+#        $root_cmd dpkg --add-architecture i386
+#        $root_cmd update
+#
+#        #check_installable
+#
+#        #drivers
+#        #[[ "$wine" -eq 1 ]] && wine_install
+#        #[[ "$extra_libraries" -eq 1 ]] && libraries
+#        #[[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-ubuntu" && \
+#        #$root_cmd apt install "${pkg_list[@]}" -y
+#        #steam_compatibility_tools
+#        #agnostic_installing ;;
+#        all ;;
+#    'fedora')
+#        $root_cmd dnf install fedora-workstation-repositories \
+#            "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+#            "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm" -y
+#        $root_cmd dnf check-update
+#
+#        #check_installable
+#        #drivers
+#        #[[ "$wine" -eq 1 ]] && wine_install
+#        #[[ "$extra_libraries" -eq 1 ]] && libraries
+#        [[ "$obs_studio" -eq 1 ]] && [[ "$nvidia_proprietary" -eq 1 ]] && echo 'xorg-x11-drv-nvidia-cuda' >> "$cache/to-install-native-fedora"
+#        # Some retroarch data files which don't come with the retroarch package
+#        [[ "$retroarch" -eq 1 ]] && printf '\nretroarch-freeworld\nretroarch-freeworld-database\nretroarch-freeworld-filters' >> "$cache/to-install-arch"
+#        #[[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-fedora" && \
+#        #$root_cmd dnf install "${pkg_list[@]}" -y
+#        #agnostic_installing
+#        #fallback
+#        #steam_compatibility_tools
+#        all
+#        ;;
+#esac
 
 $root_cmd rm -rf "$cache"/* # clear the cache
 [ -n "$(<$cache/uninstallable)" ] && echo 'llgi: error: the following packages could not be installed:' && cat "$cache/uninstallable"

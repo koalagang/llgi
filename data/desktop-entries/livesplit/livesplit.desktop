@@ -4,3 +4,4 @@ Exec=wine '/usr/lib/livesplit/livesplit.exe'
 Terminal=false
 Type=Application
 Icon=/usr/share/icons/livesplit/livesplit-icon.png
+Categories=Game;Utility;

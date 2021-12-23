@@ -4,3 +4,4 @@ Exec=/usr/bin/rpcs3-*_linux64.AppImage
 Terminal=false
 Type=Application
 Icon=/usr/share/icons/rpcs3-icon.png
+Categories=Game;Utility;

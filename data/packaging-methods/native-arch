@@ -1,5 +1,4 @@
 steam,steam
-sdl2,sdl2
 lutris,lutris
 discord,discord
 itch,itch
@@ -42,3 +41,6 @@ noisetorch-bin,noisetorch
 playonlinux,playonlinux
 winetricks,winetricks
 protonup-qt,protonup-qt
+protonup-git,protonup
+boxtron,boxtron
+luxtorpeda-git,luxtorpeda
