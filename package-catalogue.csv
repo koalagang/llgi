@@ -10,8 +10,8 @@ gamehub,Arch; Fedora; zap
 multimc,Arch; Ubuntu (deb)
 minecraft_launcher,Arch; Ubuntu (deb); snap
 veloren,Arch; Fedora (copr); flatpak; snap
-supertux,Arch; Ubuntu; Fedora; flatpak, snap, zap
-supertuxkart,Arch; Ubuntu; Fedora; flatpak, snap, zap
+supertux,Arch; Ubuntu; Fedora; flatpak; snap; zap
+supertuxkart,Arch; Ubuntu; Fedora; flatpak; snap; zap
 extremetuxracer,Arch; Fedora; flatpak
 zero_ad,Arch; Ubuntu; snap; zap
 aisleriot,Arch; Ubuntu; Fedora; flatpak
@@ -19,7 +19,7 @@ mahjongg,Arch; Ubuntu; Fedora; flatpak
 knights,Arch; Ubuntu; Fedora
 gnuchess,Arch; Ubuntu; Fedora
 mari_zero,Arch; Fedora; snap
-minetest,Arch; Ubuntu; flatpak, snap, zap
+minetest,Arch; Ubuntu; flatpak; snap; zap
 teeworlds,Arch; Ubuntu snap; flatpak; Steam
 kapman,Arch; Ubuntu; Fedora; snap; flatpak
 xonotic,Arch; flatpak; snap; zap
