@@ -95,7 +95,7 @@ echo 'Upgrading packages...'
 [ "$parent_distro" = 'fedora' ] && $root_cmd dnf upgrade --refresh -y
 
 # Dependency check
-deps=('git' 'wget' 'curl' 'unzip' 'tar' 'make')
+deps=('git' 'wget' 'curl' 'unzip' 'tar' 'make' 'xdotool' 'wmctrl' 'bc')
 echo "${deps[@]}" | sed 's/ /\n/g' | xargs -I% -n 1 sh -c 'command -v "%" >/dev/null || echo "error: missing dependency: %" | tee "/tmp/llgi-missing-deps"'
 [ -e '/tmp/llgi-missing-deps' ] && echo 'Installing missing llgi dependencies...' && rm '/tmp/llgi-missing-deps' &&
     case "$parent_distro" in
@@ -112,17 +112,20 @@ bak (){; echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak ;}
 source "$config/llgi.conf"
 
 wine_install (){
-    printf '\nInstalling wine...\n'
+    echo 'Installing wine...'
     case "$parent_distro" in
         'arch') $root_cmd pacman -S wine-staging giflib lib32-giflib libpng lib32-libpng libldap lib32-libldap gnutls lib32-gnutls \
                 mpg123 lib32-mpg123 openal lib32-openal v4l-utils lib32-v4l-utils libpulse lib32-libpulse libgpg-error \
                 lib32-libgpg-error alsa-plugins lib32-alsa-plugins alsa-lib lib32-alsa-lib libjpeg-turbo lib32-libjpeg-turbo \
                 sqlite lib32-sqlite libxcomposite lib32-libxcomposite libxinerama lib32-libgcrypt libgcrypt lib32-libxinerama \
                 ncurses lib32-ncurses opencl-icd-loader lib32-opencl-icd-loader libxslt lib32-libxslt libva lib32-libva gtk3 \
-                lib32-gtk3 gst-plugins-base-libs lib32-gst-plugins-base-libs vulkan-icd-loader lib32-vulkan-icd-loader --needed --noconfirm ;;
-        'ubuntu') $root_cmd apt install wine64 wine32 libasound2-plugins:i386 libsdl2-2.0-0:i386 libdbus-1-3:i386 libsqlite3-0:i386 -y ;;
-        'fedora') $root_cmd dnf install wine -y
+                lib32-gtk3 gst-plugins-base-libs lib32-gst-plugins-base-libs vulkan-icd-loader lib32-vulkan-icd-loader wine-mono --needed --noconfirm ;;
+        'ubuntu') $root_cmd apt install wine64 wine32 libasound2-plugins:i386 libsdl2-2.0-0:i386 libdbus-1-3:i386 libsqlite3-0:i386 mono-complete -y ;;
+        'fedora') $root_cmd dnf install wine wine-mono -y
         esac
+    winecfg &
+    sleep 5
+    xdotool mousemove -w "$(echo "ibase=16; $(wmctrl -l | grep 'Wine configuration' | cut -c 3-11 | tr a-z A-Z)" | bc)" 200 425 click 1
 }
 
 # drivers and vulkan
@@ -134,13 +137,16 @@ drivers (){
     [[ "$intel" -eq 1 ]] && driver_vendor='intel'
     case "$parent_distro" in
         'arch')
+            # nvidia_pkg='nvidia-lts'
+            # $root_cmd pacman -S "$nvidia_pkg"-dkms "$nvidia_pkg"-utils lib32-"$nvidia_pkg"-utils "$nvidia_pkg"-settings nvidia-prime opencl-"$nvidia_pkg" lib32-opencl-"$nvidia_pkg"
             if [ "$driver_vendor" = 'nvidia' ]; then
                 [ "$(uname -r)" =~ 'lts' ] && kernel='lts'
                 if [[ "$nvidia_495" -eq 1 ]]; then
-                    [ "$kernel" = 'lts' ] && nvidia_pkgs='nvidia-lts'
-                    [ "$kernel" != 'lts' ] && nvidia_pkgs='nvidia'
-                    nvidia_pkgs="$nvidia_pkgs nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime"
+                    [ "$kernel" = 'lts' ] && nvidia_pkg='nvidia-lts'
+                    [ "$kernel" != 'lts' ] && nvidia_pkg='nvidia'
+                    all_nvidia_pkgs="$nvidia_pkgs nvidia-dkms nvidia-utils lib32-nvidia-utils nvidia-settings nvidia-prime"
                 elif [[ "$nvidia_390" -eq 1 ]]; then
+                    nvidia_pkg='nvidia-390xx'
                     nvidia_pkgs='nvidia-390xx nvidia-390xx-dkms nvidia-390xx-utils lib32-nvidia-390xx-utils nvidia-390xx-settings'
                 elif [[ "$nvidia_340" -eq 1 ]]; then
                     [ "$kernel" = 'lts' ] && nvidia_pkgs='nvidia-340xx nvidia-340xx-lts-dkms nvidia-340xx-utils lib32-nvidia-340xx-utils nvidia-340xx-settings'
@@ -182,66 +188,14 @@ libraries (){
         'fedora') $root_cmd dnf install SDL2.i686 SDL2.x86_64 libbsd.i686 libbsd.x86_64 openal-soft.i686 openal.x84_64 -y
     esac
 }
-
-steam_compatibility_tools (){
-    if [[ "$boxtron" -eq 1 ]]; then
-        case "$parent_distro" in
-            'ubuntu') $root_cmd apt install dosobox inotify-tools timidity fluid-soundfont-gm -y ;;
-            'fedora') $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
-        esac
-        curl -sL 'https://github.com/dreamer/boxtron/releases/download/v0.5.4/boxtron.tar.xz' -O "$cache/boxtron.tar.xz"
-        tar xJf "$cache/boxtron.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
-    fi
-
-    if [[ "$protonup" -eq 1 ]]; then
-        case "$parent_distro" in
-            'ubuntu') $root_cmd apt install python3-pip -y ;;
-            'fedora') $root_cmd dnf install python3-pip -y
-        esac
-        pip install protonup
-        mkdir -p "$HOME/.steam/root/compatibilitytools.d" && protonup -d "$HOME/.steam/root/compatibilitytools.d"
-        echo 'Downloading the latest version of ProtonGE...' && protonup -y
-        sed -i '/protonup/d' "$cache/uninstallable"
-    fi
-
-    if [[ "$luxtorpeda" -eq 1 ]]; then
-        case "$parent_distro" in
-            'ubuntu') $root_cmd apt install libssl-dev -y ;;
-            'fedora') $root_cmd dnf install openssl-devel
-        esac
-        git clone 'https://github.com/luxtorpeda-dev/luxtorpeda.git' "$cache/luxtorpeda"
-        make -C "$cache/luxtorpeda" user-install
-        sed -i '/luxtorpeda/d' "$cache/uninstallable"
-    fi
-
-    if [[ "$roberta" -eq 1 ]]; then
-        case "$parent_distro" in
-            # Roberta is not available on the AUR
-            'arch') $root_cmd pacman -S scummvm inotifytools --noconfirm --needed ;;
-            'ubuntu') $root_cmd apt install scummvm inotifytools -y ;;
-            'fedora') $root_cmd dnf install scummvm inotifytools -y
-        esac
-        curl -sL 'https://github.com/dreamer/roberta/releases/download/v0.1.0/roberta.tar.xz' -O "$cache/roberta.tar.xz"
-        tar xJf "$cache/roberta.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
-        sed -i '/roberta/d' "$cache/uninstallable"
-    fi
-
-    # Protonup-qt
-    if [[ "$protonup_qt" -eq 1 ]]; then
-        wget 'https://github.com/DavidoTek/ProtonUp-Qt/releases/download/v2.4.1/ProtonUp-Qt-2.4.1-x86_64.AppImage' -O "$cache/protonup-qt"
-        $root_cmd chmod a+x "$cache/protonup-qt"
-        $root_cmd mv "$cache/protonup-qt" '/usr/bin/protonup-qt'
-        $root_cmd cp "$desktop_entries_dir/protonup-qt/protonup-qt.desktop" '/usr/share/applications'
-        $root_cmd cp -r "$desktop_entries_dir/protonup-qt/icons" '/usr/share'
-    fi
-}
-
 # Mini functions
 # These are here to help me to stay dry (don't repeat yourself) with the fallback function.
-ppa_install (){; [[ "$2" -eq 1 ]] && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2" ;}
-deb_install (){; [[ "$2" -eq 1 ]] && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
-download_extract_tar (){; [[ "$2" -eq 1 ]] && wget -q --show-progress "$1" -O "$cache/$2.tar.gz" && tar xf "$cache/$2.tar.gz" -C "$cache" ;}
+requires_fallback (){; [[ "$1" -eq 1 ]] && [ -n "$(grep "$1" "$cache/not-installable")" ] && sed -i "/$1/d" "$cache/not-installable" ;}
+ppa_install (){; requires_fallback "$2" && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2" ;}
+deb_install (){; requires_fallback "$2" && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
+download_extract_tar (){; requires_fallback "$2" && wget -q --show-progress "$1" -O "$cache/$2.tar.gz" && tar xf "$cache/$2.tar.gz" -C "$cache" ;}
 install_zip (){
+    requires_fallback "$2" || return
     mkdir -p "$cache/$2"
     wget -q --show-progress "$1" -O "$cache/$2/$2.zip"
     unzip "$cache/$2/$2.zip" -d "$cache/$2"
@@ -251,6 +205,7 @@ install_zip (){
     $root_cmd mkdir -p "/usr/share/icons/$2" && $root_cmd cp "$desktop_entries/$2/$2-icon.png" "/usr/share/icons/$2"
 }
 steamtinkerlaunch_install (){
+    requires_fallback 'steamtinkerlaunch' || return
     # Install dependencies of yad, as well as tools required to compile yad.
     case "$parent_distro" in
         'ubuntu') $root_cmd apt install xdotool automake libtool libglib2.0-dev intltool libgtksourceview-3.0-dev libwebkit2gtk-4.0-dev libgspell-1-dev -y ;;
@@ -275,6 +230,7 @@ steamtinkerlaunch_install (){
     $root_cmd make install -C "$cache/steamtinkerlaunch"
 }
 
+
 # fallback methods for installing packages if they are not available in native, flatpak, snap or appimage form
 # TODO: add a fallback for every single package
 fallback (){
@@ -292,11 +248,11 @@ fallback (){
             elif [[ "$vkbasalt" -eq 1 ]]; then; $root_cmd add-apt-repository ppa:flexiondotorg/mangohud -y ; fi
             # These were not included in the above if statement because then only one would run,
             # so, by doing it this way, then if multiple are enabled then all can be run
-            [[ "$goverlay" -eq 1 ]] && ppa_pkgs="$ppa_pkgs goverlay"
-            [[ "$mangohud" -eq 1 ]] && ppa_pkgs="$ppa_pkgs mangohud"
-            [[ "$vkbasalt" -eq 1 ]] && ppa_pkgs="$ppa_pkgs vkbasalt"
-            [ "$distro" != 'Pop!_OS' ] && $root_cmd add-apt-repository ppa:tkashkin/gamehub -y
-            [[ "$gamehub" -eq 1 ]] && ppa_pkgs="$ppa_pkgs com.github.tkashkin.gamehub"
+            requires_fallback 'goverlay' && ppa_pkgs="$ppa_pkgs goverlay"
+            requires_fallback 'mangohud' && ppa_pkgs="$ppa_pkgs mangohud"
+            requires_fallback 'vkbasalt' && ppa_pkgs="$ppa_pkgs vkbasalt"
+            requires_fallback 'gamehub' &&  [ "$distro" != 'Pop!_OS' ] && $root_cmd add-apt-repository ppa:tkashkin/gamehub -y
+            requires_fallback 'gamehub' && ppa_pkgs="$ppa_pkgs com.github.tkashkin.gamehub"
 
             deb_install 'https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/releases/download/v1.11.0-alpha/heroic_1.11.0-alpha_amd64.deb' 'heroic'
             deb_install 'https://github.com/sharkwouter/minigalaxy/releases/download/1.1.0/minigalaxy_1.1.0_all.deb' 'minigalaxy'
@@ -306,28 +262,13 @@ fallback (){
 
             # In some of the below statements, using 'if' is not strictly necessary but I chose to use them because otherwise I would require many '&&'
             # Flashpoint Infinity
-            if [[ "$flashpoint_infinity" -eq 1 ]]; then
-                wget -q --show-progress 'https://bluepload.unstable.life/flashpoint-infinity-8-2-2-amd64-deb.7z' -O "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z"
-                $root_cmd apt install p7zip-full -y && 7z x "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z"
+            requires_fallback 'flashpoint_infinity' &&
+                wget -q --show-progress 'https://bluepload.unstable.life/flashpoint-infinity-8-2-2-amd64-deb.7z' -O "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z" &&
+                $root_cmd apt install p7zip-full -y && 7z x "$cache/flashpoint-infinity-8-2-2-amd64.deb.7z" &&
                 $root_cmd apt install "$cache/flashpoint-infinity_8.2-2_amd64.deb" -y && $root_cmd apt remove p7zip-full -y && $root_cmd apt autoremove -y
-            fi
 
             # Install the ppa packages, along with any missing dependencies of the deb packages
             $root_cmd apt update && $root_cmd apt -f install -y && $root_cmd install "$ppa_pkgs" -y
-
-            # Protonup
-            if [[ "$protonup" -eq 1 ]]; then
-                $root_cmd apt install python3-pip -y
-                echo "APT::Update::Post-Invoke {\"echo 'Checking for protonup updates...' && $root_cmd pip install -U protonup >/dev/null 2>&1\";};" >> '/etc/apt/apt.conf'
-                mkdir -p "$HOME/.steam/root/compatibilitytools.d" && protonup -d "$HOME/.steam/root/compatibilitytools.d"
-                echo 'Downloading the latest version of ProtonGE...' && protonup -y
-            fi
-
-            if [[ "$boxtron" -eq 1 ]]; then
-                $root_cmd apt install dosbox inotify-tools timidity fluid-soundfont-gm -y
-                curl -sL 'https://github.com/dreamer/boxtron/releases/download/v0.5.4/boxtron.tar.xz' -O "$cache/boxtron.tar.xz"
-                tar xJf "$cache/boxtron.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
-            fi
             ;;
         'fedora')
             # Minecraft
@@ -398,6 +339,66 @@ fallback (){
     fi
 }
 
+steam_compatibility_tools (){
+    if [[ "$boxtron" -eq 1 ]]; then
+        requires_fallback 'boxtron' || break
+        case "$parent_distro" in
+            'ubuntu') $root_cmd apt install dosobox inotify-tools timidity fluid-soundfont-gm -y ;;
+            'fedora') $root_cmd dnf install dosbox-staging inotify-tools timidity++ fluid-soundfont-gm -y
+        esac
+        curl -sL 'https://github.com/dreamer/boxtron/releases/download/v0.5.4/boxtron.tar.xz' -O "$cache/boxtron.tar.xz"
+        tar xJf "$cache/boxtron.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
+    fi
+
+    if [[ "$protonup" -eq 1 ]]; then
+        requires_fallback 'protonup' || break
+        case "$parent_distro" in
+            'ubuntu') $root_cmd apt install python3-pip -y ;;
+            'fedora') $root_cmd dnf install python3-pip -y
+        esac
+        pip install protonup
+        [ -z "$(grep -i 'steam' "$cache/to-install-flatpak" )" ] && mkdir -p "$HOME/.steam/root/compatibilitytools.d" && protonup -d "$HOME/.steam/root/compatibilitytools.d"
+        [ -n "$(grep -i 'steam')" "$cache/to-install-flatpak" ] &&
+            mkdir -p "$HOME/.var/app/com.valvesoftware.Steam/data/Steam/compatibilitytools.d" && protonup -d "$HOME/.var/app/com.valvesoftware.Steam/data/Steam/compatibilitytools.d"
+        echo 'Downloading the latest version of ProtonGE...' && protonup -y
+        sed -i '/protonup/d' "$cache/not-installable"
+    fi
+
+    if [[ "$luxtorpeda" -eq 1 ]]; then
+        requires_fallback 'luxtorpeda' || break
+        case "$parent_distro" in
+            'ubuntu') $root_cmd apt install libssl-dev -y ;;
+            'fedora') $root_cmd dnf install openssl-devel
+        esac
+        git clone 'https://github.com/luxtorpeda-dev/luxtorpeda.git' "$cache/luxtorpeda"
+        make -C "$cache/luxtorpeda" user-install
+        sed -i '/luxtorpeda/d' "$cache/not-installable"
+    fi
+
+    if [[ "$roberta" -eq 1 ]]; then
+        requires_fallback 'roberta' || break
+        case "$parent_distro" in
+            # Roberta is not available on the AUR
+            'arch') $root_cmd pacman -S scummvm inotifytools --noconfirm --needed ;;
+            'ubuntu') $root_cmd apt install scummvm inotifytools -y ;;
+            'fedora') $root_cmd dnf install scummvm inotifytools -y
+        esac
+        curl -sL 'https://github.com/dreamer/roberta/releases/download/v0.1.0/roberta.tar.xz' -O "$cache/roberta.tar.xz"
+        tar xJf "$cache/roberta.tar.xz" -C "$HOME/.steam/root/compatibilitytools.d"
+        sed -i '/roberta/d' "$cache/not-installable"
+    fi
+
+    # Protonup-qt
+    if [[ "$protonup_qt" -eq 1 ]]; then
+        requires_fallback 'protonup-qt' || break
+        wget 'https://github.com/DavidoTek/ProtonUp-Qt/releases/download/v2.4.1/ProtonUp-Qt-2.4.1-x86_64.AppImage' -O "$cache/protonup-qt"
+        $root_cmd chmod a+x "$cache/protonup-qt"
+        $root_cmd mv "$cache/protonup-qt" '/usr/bin/protonup-qt'
+        $root_cmd cp "$desktop_entries_dir/protonup-qt/protonup-qt.desktop" '/usr/share/applications'
+        $root_cmd cp -r "$desktop_entries_dir/protonup-qt/icons" '/usr/share'
+    fi
+}
+
 check_installable (){
     sed 's/#.*$//g' "$config/llgi.conf" | grep '=1' | cut -d'=' -f1 > "$cache/to-install"
 
@@ -441,8 +442,8 @@ check_installable (){
     sort "$cache/installable-temp" > "$cache/installable"
     cp "$cache/to-install" "$cache/to-install-temp"
     sort "$cache/to-install-temp" > "$cache/to-install"
-    grep -vxf "$cache/installable" "$cache/to-install" > "$cache/uninstallable"
-    [[ "$wine" -eq 1 ]] && sed -i '/wine/d' "$cache/uninstallable"
+    grep -vxf "$cache/installable" "$cache/to-install" > "$cache/not-installable"
+    [[ "$wine" -eq 1 ]] && sed -i '/wine/d' "$cache/not-installable"
 
     # convert config names to package names
     for pref in "${pkg_prefs[@]}"; do
@@ -472,7 +473,7 @@ agnostic_installing (){
             'ubuntu') $root_cmd add-apt-repository ppa:flatpak/stable -y && $root_cmd apt update && $root_cmd apt install flatpak -y ;;
             'fedora') $root_cmd dnf install flatpak -y
         esac
-        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        $root_cmd flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
         printf '\nInstalling flatpak packages...\n' && readarray -t pkg_list < "$cache/to-install-flatpak" && $root_cmd flatpak install flathub "${pkg_list[@]}" -y
     fi
 
@@ -526,6 +527,15 @@ agnostic_installing (){
     fi
 }
 
+# https://github.com/lutris/docs/blob/master/HowToEsync.md
+esync_enable (){
+    [ "$parent_distro" = 'ubuntu' ] &&
+        $root_cmd sed -i '/DefaultLimitNOFILE/c DefaultLimitNOFILE=524288' '/etc/systemd/system.conf' &&
+        $root_cmd sed -i '/DefaultLimitNOFILE/c DefaultLimitNOFILE=524288' '/etc/systemd/user.conf'
+
+    $root_cmd sed -i "/$USER hard nofile/c $USER hard no file 524288" '/etc/security/limits.conf'
+}
+
 [ "$parent_distro" = 'arch' ] && $aur_helper -Syu --noconfirm
 [ "$parent_distro" = 'ubuntu' ] && $root_cmd apt update && $root_cmd apt upgrade -y
 [ "$parent_distro" = 'fedora' ] && $root_cmd upgrade --refresh -y
@@ -552,8 +562,8 @@ fi
 
 check_installable
 drivers
-[[ "$wine" -eq 1 ]] && wine_install && sed -i '/wine/d' "$cache/uninstallable"
-[[ "$extra_libraries" -eq 1 ]] && libraries && sed -i '/extra_libraries/d' "$cache/uninstallable"
+[[ "$wine" -eq 1 ]] && wine_install && sed -i '/wine/d' "$cache/not-installable"
+[[ "$extra_libraries" -eq 1 ]] && libraries && sed -i '/extra_libraries/d' "$cache/not-installable"
 [[ "${pkg_prefs[@]}" =~ 'native' ]] && printf '\nInstalling native packages...\n' && readarray -t pkg_list < "$cache/to-install-native-$parent_distro"
 case "$parent_distro" in
     'arch')
@@ -595,6 +605,7 @@ esac
 agnostic_installing
 fallback
 steam_compatibility_tools
+[ "$esync" -eq 1 ] && [ "$(ulimit -Hn)" -lt 524288] && esync_enable
 
 #case "$parent_distro" in
 #    'arch')
@@ -650,5 +661,5 @@ steam_compatibility_tools
 #esac
 
 $root_cmd rm -rf "$cache"/* # clear the cache
-[ -n "$(<$cache/uninstallable)" ] && echo 'llgi: error: the following packages could not be installed:' && cat "$cache/uninstallable"
-printf '\nllgi: installation complete\nPlease reboot your system for the installation to take full affect.\n'
+[ -n "$(<$cache/not-installable)" ] && echo 'llgi: error: the following packages could not be installed:' && cat "$cache/not-installable"
+printf '\nllgi: installation complete\nPlease reboot your system for the installation to take full affect.\nNOTE: you may encounter some issues if you try to game now without restarting.\n'
