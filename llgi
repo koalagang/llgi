@@ -84,25 +84,15 @@ export pkg_prefs=($pkg_prefs)
 # Distro check
 distro="$(grep -w 'NAME' /etc/os-release | cut -d'"' -f2)" && export distro
 echo "Distributon detected as $distro."
-[ -n "$(command -v 'dnf')" ] && parent_distro='fedora'
-[ -n "$(command -v 'apt')" ] && parent_distro='ubuntu'
 [ -n "$(command -v 'pacman')" ] && parent_distro='arch'
+[ -n "$(command -v 'apt')" ] && parent_distro='ubuntu'
+[ -n "$(command -v 'dnf')" ] && parent_distro='fedora'
 [ -z "$parent_distro" ] && echo 'llgi: error: your Linux distribution is not supported' && exit 0
 
 echo 'Upgrading packages...'
 [ "$parent_distro" = 'arch' ] && $aur_helper -Syu --noconfirm
 [ "$parent_distro" = 'ubuntu' ] && $root_cmd apt update && $root_cmd apt upgrade -y
 [ "$parent_distro" = 'fedora' ] && $root_cmd dnf upgrade --refresh -y
-
-# Dependency check
-deps=('git' 'wget' 'curl' 'unzip' 'tar' 'make' 'xdotool' 'wmctrl' 'bc')
-echo "${deps[@]}" | sed 's/ /\n/g' | xargs -I% -n 1 sh -c 'command -v "%" >/dev/null || echo "error: missing dependency: %" | tee "/tmp/llgi-missing-deps"'
-[ -e '/tmp/llgi-missing-deps' ] && echo 'Installing missing llgi dependencies...' && rm '/tmp/llgi-missing-deps' &&
-    case "$parent_distro" in
-        'arch') $root_cmd pacman -S "${deps[@]}" --needed --noconfirm ;;
-        'ubuntu') $root_cmd apt install "${deps[@]}" -y ;;
-        'fedora') $root_cmd dnf install "${deps[@]}" -y
-    esac
 
 bak (){; echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak ;}
 
