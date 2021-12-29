@@ -94,7 +94,8 @@ echo 'Upgrading packages...'
 [ "$parent_distro" = 'ubuntu' ] && $root_cmd apt update && $root_cmd apt upgrade -y
 [ "$parent_distro" = 'fedora' ] && $root_cmd dnf upgrade --refresh -y
 
-bak (){; echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak ;}
+bak (){
+ echo "Backing up $1..." && $root_cmd cp --backup=numbered $1 $1.bak ;}
 
 # Source the config file because some software requires special treatment
 # (can't simply be installed as a single package from the repos).
@@ -180,10 +181,14 @@ libraries (){
 }
 # Mini functions
 # These are here to help me to stay dry (don't repeat yourself) with the fallback function.
-requires_fallback (){; [[ "$1" -eq 1 ]] && [ -n "$(grep "$1" "$cache/not-installable")" ] && sed -i "/$1/d" "$cache/not-installable" ;}
-ppa_install (){; requires_fallback "$2" && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2" ;}
-deb_install (){; requires_fallback "$2" && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
-download_extract_tar (){; requires_fallback "$2" && wget -q --show-progress "$1" -O "$cache/$2.tar.gz" && tar xf "$cache/$2.tar.gz" -C "$cache" ;}
+requires_fallback (){
+ [[ "$1" -eq 1 ]] && [ -n "$(grep "$1" "$cache/not-installable")" ] && sed -i "/$1/d" "$cache/not-installable" ;}
+ppa_install (){
+ requires_fallback "$2" && $root_cmd add-apt-repository "ppa:$1" -y && export ppa_pkgs="$ppa_pkgs $2" ;}
+deb_install (){
+ requires_fallback "$2" && echo "Downloading $2 deb file..." && wget -q --show-progress "$1" -O "$cache/$2.deb" && $root_cmd dpkg -i "$cache/$2.deb" ;}
+download_extract_tar (){
+ requires_fallback "$2" && wget -q --show-progress "$1" -O "$cache/$2.tar.gz" && tar xf "$cache/$2.tar.gz" -C "$cache" ;}
 install_zip (){
     requires_fallback "$2" || return
     mkdir -p "$cache/$2"

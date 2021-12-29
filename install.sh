@@ -11,7 +11,7 @@ PREFIX='/usr'
 [ -z "$XDG_DATA_HOME" ] && data="$HOME/.local/share/llgi"
 [ -n "$XDG_CONFIG_HOME" ] && config="$XDG_CONFIG_HOME/llgi"
 [ -z "$XDG_CONFIG_HOME" ] && config="$HOME/.config/llgi"
-mkdir -p "$data" "$config"
+mkdir -p "$config"
 
 # Distro check
 [ -n "$(command -v 'pacman')" ] && parent_distro='arch'
@@ -33,7 +33,7 @@ echo "${deps[@]}" | sed 's/ /\n/g' | xargs -I% -n 1 sh -c 'command -v "%" >/dev/
         'fedora') $root_cmd dnf install "${deps[@]}" -y
     esac
 
-git clone 'https://github.com/koalagang/llgi.git' "$data/llgi-installation"
+git clone 'https://github.com/koalagang/llgi.git' "$data"
 chmod +x "$data/llgi" && $root_cmd mv "$data/llgi" "${PREFIX}/bin/llgi"
 mv "$data/llgi.conf" "$config/llgi.conf"
 
